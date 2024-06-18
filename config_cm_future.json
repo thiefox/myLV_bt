@@ -1,0 +1,13 @@
+{
+  "market": "cm_future",
+  "api_key": "input_your_api_key",
+  "api_key_type": "ED25519",
+  "secret_path": "input_your_key_filepath",
+  "max_orders": 1,
+  "proxy_host": "",
+  "proxy_port": 0,
+  "dingding_token": "dingding_token",
+  "dingding_prompt": "[info]",
+  "streams":["btcusd_perp@kline_6h","ethusd_perp@kline_6h","bnbusd_perp@kline_6h","solusd_perp@kline_6h"]
+}
+
