@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from decimal import Decimal
 
+#确保临时目录存在
 def _get_trader_dir(temp_name: str):
     """
     Get path where trader is running in.
@@ -82,6 +83,7 @@ def round_to(value: float, target: float) -> float:
     rounded = float(int(round(value / target)) * target)
     return rounded
 
+#发送钉钉消息
 def dingding_info(token: str, prompt: str, symbol: str, content: str):
     headers = {'Content-Type': 'application/json;charset=utf-8'}
     api_url = "https://oapi.dingtalk.com/robot/send?access_token=%s" % token

@@ -136,7 +136,7 @@ class BinanceSpotHttp(object):
          'orderTypes': ['LIMIT', 'MARKET', 'STOP'], 'timeInForce': ['GTC', 'IOC', 'FOK', 'GTX']}]}
 
         """
-
+        # 获取交易规则和交易对
         path = '/api/v3/exchangeInfo'
         return self.request(req_method=RequestMethod.GET, path=path)
 
@@ -149,7 +149,7 @@ class BinanceSpotHttp(object):
         limits = [5, 10, 20, 50, 100, 500, 1000]
         if limit not in limits:
             limit = 5
-
+        # 获取交易深度
         path = "/api/v3/depth"
         query_dict = {"symbol": symbol,
                       "limit": limit
@@ -206,11 +206,12 @@ class BinanceSpotHttp(object):
         'askPrice': '9168.51000000', 'askQty': '0.93307800'
         }
         """
+        # 获取当前最优的挂单(最高买单,最低卖单)
         path = "/api/v3/ticker/bookTicker"
         query_dict = {"symbol": symbol}
         return self.request(RequestMethod.GET, path, query_dict)
 
-    def get_client_order_id(self):
+    def get_client_order_id(self) -> str:
         """
         generate the client_order_id for user.
         :return:
@@ -258,7 +259,7 @@ class BinanceSpotHttp(object):
         :param stop_price:
         :return:
         """
-
+        # 下单
         path = '/api/v3/order'
 
         if client_order_id is None:
@@ -297,6 +298,7 @@ class BinanceSpotHttp(object):
         :param client_order_id:
         :return:
         """
+        # 获取订单状态和下单是同一个接口？只是一个是POST，一个是GET？
         path = "/api/v3/order"
         prams = {"symbol": symbol, "timestamp": self.get_current_timestamp(), "origClientOrderId": client_order_id}
 
@@ -313,7 +315,7 @@ class BinanceSpotHttp(object):
         params = {"symbol": symbol, "timestamp": self.get_current_timestamp(),
                   "origClientOrderId": client_order_id
                   }
-
+        # 为什么要重试3次？
         for i in range(0, 3):
             try:
                 order = self.request(RequestMethod.DELETE, path, params, verify=True)
@@ -328,6 +330,7 @@ class BinanceSpotHttp(object):
         :param symbol: BNBUSDT, or BTCUSDT etc.
         :return:
         """
+        # 获取当前用户某个交易对的所有挂单
         path = "/api/v3/openOrders"
 
         params = {"timestamp": self.get_current_timestamp()}
@@ -351,6 +354,7 @@ class BinanceSpotHttp(object):
 
         return self.request(RequestMethod.DELETE, path, params, verify=True)
 
+    # 获取账户信息（获取用户的所有持仓）
     def get_account_info(self):
         """
         {'feeTier': 2, 'canTrade': True, 'canDeposit': True, 'canWithdraw': True, 'updateTime': 0, 'totalInitialMargin': '0.00000000',

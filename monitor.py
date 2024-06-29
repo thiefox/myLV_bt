@@ -85,6 +85,7 @@ class MarketHttpClient(object):
         keys.sort()
         return '&'.join([f"{key}={params[key]}" for key in params.keys()])
 
+    #请求数据并从json格式中返回数据
     def request(self, req_method: RequestMethod, path: str, requery_dict=None):
         url = self.host + path
 
@@ -174,6 +175,7 @@ class MarketHttpClient(object):
         :param max_try_time:
         :return:
         """
+        #spot/um_future/cm_future三个市场有什么区别？
         if self.market == "spot":
             path = "/api/v3/klines"
         if self.market == "um_future":

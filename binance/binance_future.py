@@ -115,6 +115,7 @@ class BinanceFutureHttp(object):
             except Exception as error:
                 print(f"请求:{path}, 发生了错误: {error}, 时间: {datetime.now()}")
                 time.sleep(3)
+        return
 
     def server_time(self):
         path = f"/{self.subdomain}/v1/time"
@@ -144,7 +145,7 @@ class BinanceFutureHttp(object):
         path = f"/{self.subdomain}/v1/exchangeInfo"
         return self.request(req_method=RequestMethod.GET, path=path)
 
-    def order_book(self, symbol, limit=5):
+    def order_book(self, symbol : str, limit=5):
         limits = [5, 10, 20, 50, 100, 500, 1000]
         if limit not in limits:
             limit = 5
@@ -157,7 +158,7 @@ class BinanceFutureHttp(object):
 
         return self.request(RequestMethod.GET, path, query_dict)
 
-    def get_kline(self, symbol, interval: Interval, start_time=None, end_time=None, limit=500, max_try_time=10):
+    def get_kline(self, symbol : str, interval: Interval, start_time=None, end_time=None, limit=500, max_try_time=10):
         """
 
         :param symbol:
@@ -201,13 +202,13 @@ class BinanceFutureHttp(object):
             if isinstance(data, list) and len(data):
                 return data
 
-    def get_latest_price(self, symbol):
+    def get_latest_price(self, symbol : str):
         # path = "/fapi/v1/ticker/price"
         path = f"/{self.subdomain}/v1/ticker/price"
         query_dict = {"symbol": symbol}
         return self.request(RequestMethod.GET, path, query_dict)
 
-    def get_ticker(self, symbol):
+    def get_ticker(self, symbol : str):
         # path = "/fapi/v1/ticker/bookTicker"
         path = f"/{self.subdomain}/v1/ticker/bookTicker"
         query_dict = {"symbol": symbol}
@@ -227,7 +228,7 @@ class BinanceFutureHttp(object):
         else:
             return hmac_hashing(self.api_secret, query_str)
         
-    def _sign(self, params):
+    def _sign(self, params : dict):
 
         query_string = self.build_parameters(params)
         return query_string + '&signature=' + str(self._get_sign(query_string))
@@ -296,7 +297,7 @@ class BinanceFutureHttp(object):
         # print(params)
         return self.request(RequestMethod.POST, path=path, requery_dict=params, verify=True)
 
-    def get_order(self, symbol, client_order_id=None):
+    def get_order(self, symbol : str, client_order_id=None):
         # path = "/fapi/v1/order"
         path = f"/{self.subdomain}/v1/order"
         query_dict = {"symbol": symbol, "timestamp": self.get_current_timestamp()}
@@ -305,7 +306,7 @@ class BinanceFutureHttp(object):
 
         return self.request(RequestMethod.GET, path, query_dict, verify=True)
 
-    def cancel_order(self, symbol, client_order_id=None):
+    def cancel_order(self, symbol : str, client_order_id=None):
         # path = "/fapi/v1/order"
         path = f"/{self.subdomain}/v1/order"
         params = {"symbol": symbol, "timestamp": self.get_current_timestamp()}
@@ -340,6 +341,7 @@ class BinanceFutureHttp(object):
 
         return self.request(RequestMethod.DELETE, path, params, verify=True)
 
+    # 获取账户余额
     def get_balance(self):
         """
         [{'accountId': 18396, 'asset': 'USDT', 'balance': '530.21334791', 'withdrawAvailable': '530.21334791', 'updateTime': 1570330854015}]
@@ -351,6 +353,7 @@ class BinanceFutureHttp(object):
 
         return self.request(RequestMethod.GET, path=path, requery_dict=params, verify=True)
 
+    # 获取用户的所有持仓
     def get_account_info(self):
         """
         {'feeTier': 2, 'canTrade': True, 'canDeposit': True, 'canWithdraw': True, 'updateTime': 0, 'totalInitialMargin': '0.00000000',
@@ -367,6 +370,7 @@ class BinanceFutureHttp(object):
         params = {"timestamp": self.get_current_timestamp()}
         return self.request(RequestMethod.GET, path, params, verify=True)
 
+    # 获取用户的持仓风险（是指在有杠杆的前提下？）
     def get_position_info(self):
         """
         [{'symbol': 'BTCUSDT', 'positionAmt': '0.000', 'entryPrice': '0.00000', 'markPrice': '8326.40833498', 'unRealizedProfit': '0.00000000', 'liquidationPrice': '0'}]
@@ -380,7 +384,7 @@ class BinanceFutureHttp(object):
 
 if __name__ == '__main__':
     # import pandas as pd
-
+    # 这个key和privateKey的意义是什么，从何处获取？
     key = "CzxlRyEGqkiUoq1yaRXdiTk18sx24ujHgHPGjSfL3IjkWeth6DvTIEmEK8gdkwAQ"
     privateKey = '''-----BEGIN PRIVATE KEY-----
 MC4CAQAwBQYDK2VwBCIEIMO++GTpE92lYsgcY3VzggSV43xVmmMosYxMzeq5iUlM

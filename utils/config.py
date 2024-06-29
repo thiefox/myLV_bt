@@ -45,7 +45,7 @@ class Config:
                 print("config json file error!")
                 exit(0)
         self._update(configures)
-
+    #读取配置数据
     def _update(self, update_fields : dict):
         """
         更新update fields.
@@ -56,7 +56,7 @@ class Config:
             setattr(self, k, v)
 
         try:
-            if self.api_key_type == "HMAC":
+            if self.api_key_type == "HMAC":         #HMAC SHA256签名
                 with open(self.secret_path, 'r') as f:
                     self.api_secret = f.read().strip('\n')
             else:

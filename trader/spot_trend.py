@@ -35,9 +35,9 @@ class BinanceTrader(object):
         # self.short: int = 7
         # self.medium: int = 25
         # self.long: int = 99
-        self.short: int = 6
-        self.medium: int = 12
-        self.long: int = 24
+        self.short: int = 6         #短周期MA线长度，时间可以为小时/日/周/月
+        self.medium: int = 12       #中周期MA线长度
+        self.long: int = 24         #长周期MA线长度
         self.intervalTS: int = 0   #当前k线的interval time ticks 
         self.latest_klines = None  #存储最近的self.long长度的k线数据， 即当前未定型K线之前的self.long长度的k线数据
         self.sma: float = 0       #当前未定型K线之前一个 short MA值
@@ -47,7 +47,7 @@ class BinanceTrader(object):
         self.msum: float = 0
         self.lsum: float = 0
 
-
+    # 获取当前的买一卖一价格
     def get_bid_ask_price(self):
 
         ticker = self.http_client.get_ticker(config.symbol)
@@ -60,6 +60,8 @@ class BinanceTrader(object):
 
         return bid_price, ask_price
     
+    # short/medium/long三条MA线交叉检查
+    # 前三个参数是之前的ma值，后三个参数是当前的ma值
     def _check_cross(self, prev_sma: float, prev_mma: float, prev_lma: float, sma: float, mma: float, lma: float, flag: bool):
         """
          : 检查短中长三条MA线是否出现交叉
@@ -90,7 +92,8 @@ class BinanceTrader(object):
                 # 当前K线数据（未定型）
                 now_kline = klines[-1] 
                 # 从K线数据获取K线的interval time ， in unix time tickers
-                self.intervalTS = now_kline[6] - now_kline[0] + 1
+                # [6]是K线的结束时间， [0]是K线的开始时间
+                self.intervalTS = now_kline[6] - now_kline[0] + 1   # +1是什么意思？间隔时间怎么是这么计算的？
                 # 将前self.long根已定型的K线数据保存在latest_klines
                 self.latest_klines = deque(klines[0:self.long])
                 # 计算当前K线前一根对应的sma， mma, lma值，这些值在当前一个interval周期内是固定值。
@@ -100,16 +103,22 @@ class BinanceTrader(object):
                         self.ssum = self.lsum
                     if i == self.medium:
                         self.msum = self.lsum
-                    self.lsum += float(klines[i][4])
+                    # klines[i][4]是K线的收盘价
+                    # 所以lsum就是最近self.long根K线的收盘价之和
+                    self.lsum += float(klines[i][4])    
+                # 所以macd的值就是最近self.long根K线的收盘价之和除以self.long？
+                # 加权在哪里体现？
                 self.sma = self.ssum / self.short
                 self.mma = self.msum / self.medium
                 self.lma = self.lsum / self.long
                 # 以当前未定型的K线数据来估算当前K线的sma，mma，lma值
+                # 去掉最早的K线数据，加上当前K线数据，计算sma，mma，lma
                 lma = (self.lsum + float(now_kline[4]) - float (self.latest_klines[0][4])) / self.long
                 mma = (self.msum + float(now_kline[4]) - float (self.latest_klines[-self.medium][4])) / self.medium
                 sma = (self.ssum + float(now_kline[4]) - float (self.latest_klines[-self.short][4])) / self.short
                 print(f"MA({self.short}): {sma}, MA({self.medium}): {mma}, MA({self.long}): {lma}")
                 # 未定型K线的最后1/10的interval区间判断三条MA线是否交叉
+                # [X][6]是K线的结束时间， [X][0]是K线的开始时间
                 if self.http_client.get_current_timestamp() > self.latest_klines[-1][6] + self.intervalTS*9/10:
                     self._check_cross(self.sma, self.mma, self.lma, sma, mma, lma, False)
             else:
@@ -119,10 +128,15 @@ class BinanceTrader(object):
             # 向服务器查询当前K线数据
             kline = self.http_client.get_kline(symbol=config.symbol,interval=self.kline_interval, limit=1)
             if len(kline) == 1:
+                # [X][0]是K线的开始时间，为什么是不等于而不是大于
+                # 这个条件满足的话，说明之前的未定K线已完成（完成态）。
                 if kline[0][0] != self.latest_klines[-1][0] + self.intervalTS:
                     # 跨入新K线interval中， latest_klines需更新，self.sma, self.mma, self.lma均需重新计算
-                    prev_kline = self.http_client.get_kline(symbol=config.symbol,interval=self.kline_interval, start_time=self.latest_klines[-1][0]+self.intervalTS, limit=1)
-                    if len(prev_kline) == 1:                                                
+                    # 向服务器查询lastest_klines之后的一根K线数据，为什么只拿一根，就不会有多根？
+                    prev_kline = self.http_client.get_kline(symbol=config.symbol,interval=self.kline_interval, \
+                        start_time=self.latest_klines[-1][0]+self.intervalTS, limit=1)
+                    if len(prev_kline) == 1:  
+                        # 窗口向右移动1格                                              
                         self.ssum += float(prev_kline[0][4]) - float (self.latest_klines[-self.short][4])                        
                         self.msum += float(prev_kline[0][4]) - float (self.latest_klines[-self.medium][4])
                         self.lsum += float(prev_kline[0][4]) - float (self.latest_klines[0][4])
@@ -139,7 +153,11 @@ class BinanceTrader(object):
                     else:
                         print("get_kline没有获得prev K线的数据")
                         return
-                # 计算当前K线的sma， mma， lma                
+                    
+                # 计算当前K线的sma， mma， lma        
+                # 未定K线的数据更新（但仍处于未定态）     
+                # 奇怪，这里不是还是未定态吗，不是应该用最新的未定态数据去更新老的未定态吗？
+                # 怎么变成了用未定态K线去代替最早一条已定态？   
                 sma = (self.ssum + float(kline[0][4]) - float (self.latest_klines[-self.short][4])) / self.short
                 mma = (self.msum + float(kline[0][4]) - float (self.latest_klines[-self.medium][4])) / self.medium
                 lma = (self.lsum + float(kline[0][4]) - float (self.latest_klines[0][4])) / self.long
