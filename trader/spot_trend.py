@@ -62,7 +62,7 @@ class BinanceTrader(object):
     
     # short/medium/long三条MA线交叉检查
     # 前三个参数是之前的ma值，后三个参数是当前的ma值
-    def _check_cross(self, prev_sma: float, prev_mma: float, prev_lma: float, sma: float, mma: float, lma: float, flag: bool):
+    def _check_cross(self, prev_sma: float, prev_mma: float, prev_lma: float, sma: float, mma: float, lma: float, passed: bool):
         """
          : 检查短中长三条MA线是否出现交叉
         """
@@ -77,7 +77,7 @@ class BinanceTrader(object):
             cross_msg = "二级卖点: MA({})下滑穿MA({})".format(self.short, self.medium)
 
         if cross_msg is not None:
-            if flag :
+            if passed :
                 cross_msg = "已经产生" + cross_msg
             else:
                 cross_msg = "即将产生" + cross_msg
@@ -87,14 +87,14 @@ class BinanceTrader(object):
     def handle_data(self):
         if self.latest_klines is None:
             # 向服务器查询self.long+1根K线数据， 其中最后一根是未定型K线，前self.long根已定型。
-            klines = self.http_client.get_kline(symbol=config.symbol,interval=self.kline_interval, limit=1+self.long)  
+            klines = self.http_client.get_kline(symbol=config.symbol, interval=self.kline_interval, limit=1+self.long)  
             if len(klines) == 1 + self.long:
                 # 当前K线数据（未定型）
                 now_kline = klines[-1] 
                 # 从K线数据获取K线的interval time ， in unix time tickers
                 # [6]是K线的结束时间， [0]是K线的开始时间
                 self.intervalTS = now_kline[6] - now_kline[0] + 1   # +1是什么意思？间隔时间怎么是这么计算的？
-                # 将前self.long根已定型的K线数据保存在latest_klines
+                # 将前self.long根已定型的K线数据保存在latest_klines, +1根已丢弃
                 self.latest_klines = deque(klines[0:self.long])
                 # 计算当前K线前一根对应的sma， mma, lma值，这些值在当前一个interval周期内是固定值。
                 klines = deque(reversed(self.latest_klines))
@@ -107,7 +107,7 @@ class BinanceTrader(object):
                     # 所以lsum就是最近self.long根K线的收盘价之和
                     self.lsum += float(klines[i][4])    
                 # 所以macd的值就是最近self.long根K线的收盘价之和除以self.long？
-                # 加权在哪里体现？
+                # 加权在哪里体现？-> 这个模型是简单的K线移动平均线模型，不是MACD也没有加权。
                 self.sma = self.ssum / self.short
                 self.mma = self.msum / self.medium
                 self.lma = self.lsum / self.long
@@ -126,14 +126,16 @@ class BinanceTrader(object):
 
         else: 
             # 向服务器查询当前K线数据
-            kline = self.http_client.get_kline(symbol=config.symbol,interval=self.kline_interval, limit=1)
+            kline = self.http_client.get_kline(symbol=config.symbol, interval=self.kline_interval, limit=1)
             if len(kline) == 1:
                 # [X][0]是K线的开始时间，为什么是不等于而不是大于
                 # 这个条件满足的话，说明之前的未定K线已完成（完成态）。
                 if kline[0][0] != self.latest_klines[-1][0] + self.intervalTS:
+                    # 问题1：上面这个条件满足说明是有跳线吗？即可能因为网络原因，漏过了N条K线数据？
                     # 跨入新K线interval中， latest_klines需更新，self.sma, self.mma, self.lma均需重新计算
                     # 向服务器查询lastest_klines之后的一根K线数据，为什么只拿一根，就不会有多根？
-                    prev_kline = self.http_client.get_kline(symbol=config.symbol,interval=self.kline_interval, \
+                    # 问题2：漏过了N条K线，下面只拿一条是为了简化处理？
+                    prev_kline = self.http_client.get_kline(symbol=config.symbol, interval=self.kline_interval, \
                         start_time=self.latest_klines[-1][0]+self.intervalTS, limit=1)
                     if len(prev_kline) == 1:  
                         # 窗口向右移动1格                                              
@@ -146,29 +148,30 @@ class BinanceTrader(object):
                         self.sma = self.ssum / self.short
                         self.mma = self.msum / self.medium
                         self.lma = self.lsum / self.long
+                        # 问题3：如果拿到的只是一根历史数据跳线，为什么还要判断是否交叉（会触发买卖action）？因为这根跳线并不是当前最新K线啊？？？
                         self._check_cross(sma, mma, lma, self.sma, self.mma, self.lma, True)
                         # 先进先出原则，移除latest_klines最左端K线数据，将prev K线加入latest_klines最右端。
                         self.latest_klines.popleft()
                         self.latest_klines.append(prev_kline[0])
+                        # 问题4：这里是不是应该return? 不然到问题5还会再触发check_cross
                     else:
                         print("get_kline没有获得prev K线的数据")
                         return
                     
                 # 计算当前K线的sma， mma， lma        
                 # 未定K线的数据更新（但仍处于未定态）     
-                # 奇怪，这里不是还是未定态吗，不是应该用最新的未定态数据去更新老的未定态吗？
-                # 怎么变成了用未定态K线去代替最早一条已定态？   
                 sma = (self.ssum + float(kline[0][4]) - float (self.latest_klines[-self.short][4])) / self.short
                 mma = (self.msum + float(kline[0][4]) - float (self.latest_klines[-self.medium][4])) / self.medium
                 lma = (self.lsum + float(kline[0][4]) - float (self.latest_klines[0][4])) / self.long
                 print(f"MA({self.short}): {sma}, MA({self.medium}): {mma}, MA({self.long}): {lma}")
                 # 当前K线的最后1/10的interval区间判断三条MA线是否交叉
+                # 问题5：为什么要当前K线窗口的最后1/10的interval区间判断三条MA线是否交叉？？？
                 if self.http_client.get_current_timestamp() > kline[0][0] + self.intervalTS*9/10:
                     self._check_cross(self.sma, self.mma, self.lma, sma, mma, lma, False)
             else:
                 print("get_kline没有获得当前K线数据!")
 
-
+    # 这个函数就是村长说的rebuild_all
     def trend_trader(self):
         """
         执行核心逻辑，趋势交易的逻辑.
@@ -176,7 +179,8 @@ class BinanceTrader(object):
         """
         # 若刚启动，构建short，medium，long MA线跟踪
         if self.mma is None:
-            self.latest_klines = self.http_client.get_kline(symbol=config.symbol,interval= Interval.HOUR_1, limit=self.long)
+            # 1个K线窗口时长为1小时
+            self.latest_klines = self.http_client.get_kline(symbol=config.symbol, interval= Interval.HOUR_1, limit=self.long)
 
 
         bid_price, ask_price = self.get_bid_ask_price()
@@ -193,13 +197,11 @@ class BinanceTrader(object):
         buy_delete_orders = []  # 需要删除买单
         sell_delete_orders = [] # 需要删除的卖单
 
-
         # 买单逻辑,检查成交的情况.
         for buy_order in self.buy_orders:
-
-            check_order = self.http_client.get_order(buy_order.get('symbol', config.symbol),client_order_id=buy_order.get('clientOrderId'))
-
-            if check_order:
+            check_order = self.http_client.get_order(buy_order.get('symbol', config.symbol), \
+                client_order_id=buy_order.get('clientOrderId'))
+            if check_order:     #问题：条件不满足，说明什么呢？服务端已经查不到该订单了？那怎么处理？
                 if check_order.get('status') == OrderStatus.CANCELED.value:
                     buy_delete_orders.append(buy_order)
                     print(f"buy order status was canceled: {check_order.get('status')}")
@@ -210,13 +212,11 @@ class BinanceTrader(object):
                     logging.info(log_msg)
                     dingding_info(config.dingding_token, config.dingding_prompt, config.symbol, log_msg)
 
-
                     sell_price = round_to(float(check_order.get("price")) * (1 + float(config.gap_percent)), float(config.min_price))
 
                     if 0 < sell_price < ask_price:
                         # 防止价格
                         sell_price = round_to(ask_price, float(config.min_price))
-
 
                     new_sell_order = self.http_client.place_order(symbol=config.symbol, order_side=OrderSide.SELL, order_type=OrderType.LIMIT, quantity=quantity, price=sell_price)
                     if new_sell_order:
