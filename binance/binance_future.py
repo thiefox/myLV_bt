@@ -90,7 +90,7 @@ class BinanceFutureHttp(object):
             return {"http": proxy, "https": proxy}
         return {}
 
-    def build_parameters(self, params: dict):
+    def build_parameters(self, params: dict) -> str:
         keys = list(params.keys())
         keys.sort()
         return '&'.join([f"{key}={params[key]}" for key in params.keys()])
@@ -216,7 +216,7 @@ class BinanceFutureHttp(object):
 
     ########################### the following request is for private data ########################
 
-    def get_current_timestamp(self):
+    def get_current_timestamp(self) -> int:
         return int(time.time() * 1000)
 
     def _get_sign(self, query_str: str):
@@ -228,12 +228,12 @@ class BinanceFutureHttp(object):
         else:
             return hmac_hashing(self.api_secret, query_str)
         
-    def _sign(self, params : dict):
+    def _sign(self, params : dict) -> str:
 
         query_string = self.build_parameters(params)
         return query_string + '&signature=' + str(self._get_sign(query_string))
 
-    def get_client_order_id(self):
+    def get_client_order_id(self) -> str:
 
         """
         generate the client_order_id for user.

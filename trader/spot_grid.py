@@ -4,7 +4,6 @@
     Module: spot grid trader
 """
 
-
 from binance import BinanceSpotHttp, OrderStatus, OrderType, OrderSide
 from utils import config
 from utils import utility, round_to, dingding_info
@@ -35,6 +34,7 @@ class BinanceTrader(object):
         bid_price = 0
         ask_price = 0
         if ticker:
+            assert(isinstance(ticker, dict))
             bid_price = float(ticker.get('bidPrice', 0))
             ask_price = float(ticker.get('askPrice', 0))
 
@@ -80,7 +80,7 @@ class BinanceTrader(object):
                     # 发送钉钉消息
                     dingding_info(config.dingding_token, config.dingding_prompt, config.symbol, log_msg)
 
-                    # 有买单成交，马上计算网格卖单价并挂出？
+                    # 有买单成交，马上计算网格卖单价并挂出？挂单卖价为上浮一个网格单位
                     sell_price = round_to(float(check_order.get("price")) * (1 + float(config.gap_percent)), float(config.min_price))
 
                     if 0 < sell_price < ask_price:  # ask_price是卖一价(最低卖价)？
@@ -92,7 +92,7 @@ class BinanceTrader(object):
                     if new_sell_order:  # 挂单成功
                         buy_delete_orders.append(buy_order)     # 只有卖单挂出成功，才删除已经成交的买单？
                         self.sell_orders.append(new_sell_order)
-                    # 基于网格计算新的买单价格
+                    # 基于网格计算新的买单价格。买单价为下浮一个网格单位
                     buy_price = round_to(float(check_order.get("price")) * (1 - float(config.gap_percent)),
                                      config.min_price)
                     if buy_price > bid_price > 0:   # bid_price是买一价(最高买价)？
@@ -128,7 +128,7 @@ class BinanceTrader(object):
                     logging.info(log_msg)
                     dingding_info(config.dingding_token, config.dingding_prompt, config.symbol, log_msg)
 
-                    # 卖单成交，先下买单.
+                    # 卖单成交，先下买单. 买单价为下浮一个网格单位
                     buy_price = round_to(float(check_order.get("price")) * (1 - float(config.gap_percent)), float(config.min_price))
                     if buy_price > bid_price > 0:
                         buy_price = round_to(bid_price, float(config.min_price))
@@ -138,7 +138,7 @@ class BinanceTrader(object):
                     if new_buy_order:
                         sell_delete_orders.append(sell_order)
                         self.buy_orders.append(new_buy_order)
-
+                    # 卖单成交，再下卖单. 卖单价为上浮一个网格单位
                     sell_price = round_to(float(check_order.get("price")) * (1 + float(config.gap_percent)), float(config.min_price))
 
                     if 0 < sell_price < ask_price:
@@ -165,6 +165,7 @@ class BinanceTrader(object):
         # 没有买单的时候.
         if len(self.buy_orders) <= 0:
             if bid_price > 0:
+                # 买单价为当前买一价下浮一个网格单位
                 price = round_to(bid_price * (1 - float(config.gap_percent)), float(config.min_price))
                 buy_order = self.http_client.place_order(symbol=config.symbol,order_side=OrderSide.BUY, order_type=OrderType.LIMIT, quantity=quantity,price=price)
                 if buy_order:
@@ -183,6 +184,7 @@ class BinanceTrader(object):
         # 没有卖单的时候.
         if len(self.sell_orders) <= 0:
             if ask_price > 0:
+                # 卖单价为当前卖一价上浮一个网格单位
                 price = round_to(ask_price * (1 + float(config.gap_percent)), float(config.min_price))
                 order = self.http_client.place_order(symbol=config.symbol,order_side=OrderSide.SELL, order_type=OrderType.LIMIT, quantity=quantity,price=price)
                 if order:

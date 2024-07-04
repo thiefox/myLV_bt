@@ -20,7 +20,13 @@ class Config:
         self.private_key: str = None
         self.private_key_pass: str = None
         self.pass_phrase = None
-        self.max_orders = 1
+        self.symbol = "BTCUSDT"
+        # gap_percent是价格区间，这里设置了5%，即价格波动上下5%，会触发买卖
+        self.gap_percent = 0.05             # 网格间隔grid percent
+        self.quantity = 200                 # 每个订单里的交易数量
+        self.min_price = 0.001              # 服务商规定的最小价格单位，参照币种的最小价格单位，比如BTC是小数点后2位
+        self.min_qty = 1                    # 服务商规定的每个订单里的最小交易数量
+        self.max_orders = 1                 # 服务商规定的允许最多同时存在的挂单数量
         self.proxy_host = ""  # proxy host
         self.proxy_port = 0  # proxy port
         self.dingding_token: str = None  #dingding access_token

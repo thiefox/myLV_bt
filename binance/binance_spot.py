@@ -86,7 +86,7 @@ class BinanceSpotHttp(object):
 
         return None
 
-    def build_parameters(self, params: dict):
+    def build_parameters(self, params: dict) -> str:
         keys = list(params.keys())
         keys.sort()
         return '&'.join([f"{key}={params[key]}" for key in params.keys()])
@@ -197,10 +197,10 @@ class BinanceSpotHttp(object):
         query_dict = {"symbol": symbol}
         return self.request(RequestMethod.GET, path, query_dict)
 
-    def get_ticker(self, symbol):
+    def get_ticker(self, symbol) -> dict:
         """
         :param symbol: 交易对
-        :return: 返回的数据如下:
+        :return: 返回的字典数据如下:
         {
         'symbol': 'BTCUSDT', 'bidPrice': '9168.50000000', 'bidQty': '1.27689900',
         'askPrice': '9168.51000000', 'askQty': '0.93307800'
@@ -220,14 +220,14 @@ class BinanceSpotHttp(object):
             self.order_count += 1
             return "x-A6SIDXVS" + str(self.get_current_timestamp()) + str(self.order_count)
 
-    def get_current_timestamp(self):
+    def get_current_timestamp(self) -> int:
         """
         获取系统的时间.
         :return:
         """
         return int(time.time() * 1000)
 
-    def _get_sign(self, query_str: str):
+    def _get_sign(self, query_str: str) -> str:
         if self.private_key is not None:
             try:
                 return ed25519_signature(self.private_key, query_str, self.private_key_pass).decode("utf-8")
@@ -236,7 +236,7 @@ class BinanceSpotHttp(object):
         else:
             return hmac_hashing(self.api_secret, query_str)
 
-    def _sign(self, params):
+    def _sign(self, params) -> str:
         """
         签名的方法， signature for the private request.
         :param params: request parameters
@@ -246,7 +246,7 @@ class BinanceSpotHttp(object):
         return query_string + '&signature=' + str(self._get_sign(query_string))
  
     def place_order(self, symbol: str, order_side: OrderSide, order_type: OrderType, quantity: float, price: float,
-                    client_order_id: str = None, time_inforce="GTC", stop_price=0):
+                    client_order_id: str = None, time_inforce="GTC", stop_price=0) -> dict:
         """
 
         :param symbol: 交易对名称
@@ -291,7 +291,7 @@ class BinanceSpotHttp(object):
 
         return self.request(RequestMethod.POST, path=path, requery_dict=params, verify=True)
 
-    def get_order(self, symbol: str, client_order_id: str):
+    def get_order(self, symbol: str, client_order_id: str) -> dict:
         """
         获取订单状态.
         :param symbol:
@@ -304,7 +304,7 @@ class BinanceSpotHttp(object):
 
         return self.request(RequestMethod.GET, path, prams, verify=True)
 
-    def cancel_order(self, symbol, client_order_id):
+    def cancel_order(self, symbol, client_order_id) -> dict:
         """
         撤销订单.
         :param symbol:
