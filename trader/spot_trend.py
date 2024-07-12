@@ -14,7 +14,7 @@ from datetime import datetime
 #from queue import Queue
 from collections import deque
 
-
+# 现货趋势策略，基于K线的金叉死叉进行交易
 class BinanceTrader(object):
 
     def __init__(self):
@@ -35,6 +35,7 @@ class BinanceTrader(object):
         # self.short: int = 7
         # self.medium: int = 25
         # self.long: int = 99
+        # 取6小时/12小时/24小时的K线为金叉死叉判断依据
         self.short: int = 6         #短周期MA线长度，时间可以为小时/日/周/月
         self.medium: int = 12       #中周期MA线长度
         self.long: int = 24         #长周期MA线长度
@@ -48,7 +49,7 @@ class BinanceTrader(object):
         self.lsum: float = 0
 
     # 获取当前的买一卖一价格
-    def get_bid_ask_price(self):
+    def get_bid_ask_price(self) -> tuple:
 
         ticker = self.http_client.get_ticker(config.symbol)
 
@@ -67,12 +68,16 @@ class BinanceTrader(object):
          : 检查短中长三条MA线是否出现交叉
         """
         cross_msg = None
+        # 金叉：短期MA线上升穿过长期MA线，买入信号
         if prev_sma < prev_lma and sma >= lma :
             cross_msg = "一级买点: MA({})上升穿MA({})".format(self.short, self.long)
+        # 死叉：短期MA线下滑穿过长期MA线，卖出信号
         if prev_sma > prev_lma and sma <= lma :
             cross_msg = "一级卖点: MA({})下滑穿MA({})".format(self.short, self.long)
+        # 二级买卖点：短期MA线上升穿过中期MA线，买入信号
         if prev_sma < prev_mma and sma >= mma and mma >= lma:
             cross_msg = "二级买点: MA({})上升穿MA({})".format(self.short, self.medium)
+        # 二级买卖点：短期MA线下滑穿过中期MA线，卖出信号
         if prev_sma > prev_mma and sma <= mma and mma <= lma:
             cross_msg = "二级卖点: MA({})下滑穿MA({})".format(self.short, self.medium)
 
@@ -93,7 +98,7 @@ class BinanceTrader(object):
                 now_kline = klines[-1] 
                 # 从K线数据获取K线的interval time ， in unix time tickers
                 # [6]是K线的结束时间， [0]是K线的开始时间
-                self.intervalTS = now_kline[6] - now_kline[0] + 1   # +1是什么意思？间隔时间怎么是这么计算的？
+                self.intervalTS = now_kline[6] - now_kline[0] + 1   # 左开右闭区间，所以要+1。intervalTS是K线的时间长度
                 # 将前self.long根已定型的K线数据保存在latest_klines, +1根已丢弃
                 self.latest_klines = deque(klines[0:self.long])
                 # 计算当前K线前一根对应的sma， mma, lma值，这些值在当前一个interval周期内是固定值。

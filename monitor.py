@@ -77,16 +77,15 @@ class MarketHttpClient(object):
         if self.proxy_host and self.proxy_port:
             proxy = f"http://{self.proxy_host}:{self.proxy_port}"
             return {"http": proxy, "https": proxy}
-
         return None
 
-    def build_parameters(self, params: dict):
+    def build_parameters(self, params: dict) -> str:
         keys = list(params.keys())
         keys.sort()
         return '&'.join([f"{key}={params[key]}" for key in params.keys()])
 
     #请求数据并从json格式中返回数据
-    def request(self, req_method: RequestMethod, path: str, requery_dict=None):
+    def request(self, req_method: RequestMethod, path: str, requery_dict=None) -> dict:
         url = self.host + path
 
         if requery_dict:
@@ -104,7 +103,7 @@ class MarketHttpClient(object):
                 print(f"请求:{path}, 发生了错误: {error}")
                 time.sleep(3)
 
-    def get_server_time(self):
+    def get_server_time(self) :
         if self.market == "spot":
             path = "/api/v3/time"
         if self.market == "um_future":
@@ -142,7 +141,7 @@ class MarketHttpClient(object):
         
         return self.request(req_method=RequestMethod.GET, path=path)
 
-    def get_order_book(self, symbol, limit=5):
+    def get_order_book(self, symbol, limit=5) -> dict:
         """
         :param symbol: BTCUSDT, BNBUSDT ect, 交易对.
         :param limit: market depth.
@@ -164,7 +163,7 @@ class MarketHttpClient(object):
 
         return self.request(RequestMethod.GET, path, query_dict)
 
-    def get_kline(self, symbol, interval, start_time=None, end_time=None, limit=500, max_try_time=10):
+    def get_kline(self, symbol, interval, start_time=None, end_time=None, limit=500, max_try_time=10) -> list:
         """
         获取K线数据.
         :param symbol:
@@ -200,7 +199,7 @@ class MarketHttpClient(object):
             if isinstance(data, list) and len(data):
                 return data
 
-    def get_latest_price(self, symbol):
+    def get_latest_price(self, symbol) -> dict:
         """
         :param symbol: 获取最新的价格.
         :return: {'symbol': 'BTCUSDT', 'price': '9168.90000000'}
@@ -215,7 +214,7 @@ class MarketHttpClient(object):
         query_dict = {"symbol": symbol}
         return self.request(RequestMethod.GET, path, query_dict)
 
-    def get_ticker(self, symbol):
+    def get_ticker(self, symbol) -> dict:
         """
         :param symbol: 交易对
         :return: 返回的数据如下:
@@ -261,7 +260,7 @@ class BinanceMonitor(object):
         self.msum = {}
         self.lsum = {}
 
-    def get_ws_client(self):
+    def get_ws_client(self) -> websocket.WebSocketApp:
         if self.market == "spot":
             wss = "wss://data-stream.binance.vision/stream?streams="
         if self.market == "um_future":
@@ -281,8 +280,10 @@ class BinanceMonitor(object):
     def on_message(self, ws, message):
         data = json.loads(message)
         if 'stream' in data:
+            # K线消息
             if data['data']['e'] == 'kline':
                 self.handle_kline(data['stream'],data['data'])
+            # 买一卖一价消息
             if data['data']['e'] == "bookTicker":
                 bid_price = float(data['data']['b'])
                 ask_price = float(data['data']['a'])
