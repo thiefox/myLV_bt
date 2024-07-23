@@ -1,5 +1,5 @@
 {
-  "market": "cm_future",
+  "market": "spot",
   "api_key": "XYCWi1jlDJcOPG8MltM0plnPQlmqFd0wuvCKVuokovxlmwXBADoCI7Ea78h6bX2Y",
   "api_key_type": "ED25519",
   "secret_path": "D:/src/python/myLV_bt/data/MYLV_E.pem",
@@ -14,6 +14,6 @@
   "proxy_port": 0,
   "dingding_token": "",
   "dingding_prompt": "[info]",
-  "streams":["btcusd_perp@kline_6h","bnbusd_perp@kline_6h"]
+  "streams":["btcusdt@kline_6h","btcusdt@bookTicker"]
 }
 

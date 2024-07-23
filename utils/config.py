@@ -9,6 +9,7 @@ import json
 
 
 class Config:
+    CONFIG_FILE = "D:/src/python/myLV_bt/config_spot.json"
     def __init__(self):
         self.market: str = "spot"  # 交易的平台, spot/cm_future/um_future         
         #"platform": "binance_spot",
@@ -80,4 +81,4 @@ class Config:
             exit(0)
 
 #config实例
-config = Config()
+#config = Config()
