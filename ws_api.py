@@ -19,7 +19,7 @@ import websocket
 str_now = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S') 
 
 format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-logging.basicConfig(level=logging.INFO, format=format, filename='ws_api_{}.txt'.format(str_now))
+logging.basicConfig(level=logging.INFO, format=format, filename='log/ws_api_{}.txt'.format(str_now))
 logger = logging.getLogger('binance')
 
 class RequestMethod(Enum):
@@ -243,7 +243,7 @@ class MarketHttpClient(object):
         return self.request(RequestMethod.GET, path, query_dict)
 
 class MarketWebSocketClient(object):
-    def __init__(self, market="spot", proxy_host=None, proxy_port=0, timeout=5, try_counts=5):
+    def __init__(self, market="spot", proxy_host=None, proxy_port=0, timeout=10, try_counts=5):
         self.host = "wss://ws-api.binance.com:443/ws-api/v3"
         self.market = market
         self.timeout = timeout
@@ -413,7 +413,7 @@ class BinanceSpider(object):
 if __name__ == '__main__':
     print("Binance ws_api Monitor Start...")
     
-    ws_client = MarketWebSocketClient()
+    ws_client = MarketWebSocketClient(timeout=60)
     start = string_to_timestamp('2024-1-1 00:00:00')
     finish = string_to_timestamp('2024-1-2 00:00:00')
     print('start={}, finish={}'.format(start, finish))
