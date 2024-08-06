@@ -52,6 +52,21 @@ class Interval(Enum):
     WEEK_1 = '1w'
     MONTH_1 = '1M'
 
+#int时间戳转换为字符串时间
+def timestamp_to_string(time_stamp : int) -> str:
+    #print('input={}'.format(time_stamp/1000))
+    
+    time_array = time.localtime(float(time_stamp/1000))
+    str_date = time.strftime("%Y-%m-%d %H:%M:%S", time_array)
+    return str_date
+
+#字符串时间转换为int时间戳
+def string_to_timestamp(str_date : str) -> int:
+    #print('input={}'.format(str_date))
+    time_array = time.strptime(str_date, "%Y-%m-%d %H:%M:%S")
+    time_stamp = int(time.mktime(time_array) * 1000)
+    return time_stamp
+
 class MarketHttpClient(object):
 
     def __init__(self, market="spot", proxy_host=None, proxy_port=0, timeout=5, try_counts=5):
@@ -251,7 +266,7 @@ class MarketWebSocketClient(object):
         keys.sort()
         return '&'.join([f"{key}={params[key]}" for key in params.keys()])
 
-    def post_kline(self):
+    def post_kline(self, begin:int=0):
         """
         获取K线数据.
         :param symbol:
@@ -273,17 +288,20 @@ class MarketWebSocketClient(object):
         }
 
         s_start = "2024-1-1 00:00:00"
-        # 先转换为时间数组
-        timeArray = time.strptime(s_start, "%Y-%m-%d %H:%M:%S")
-        # 转换为时间戳
-        start_time = int(time.mktime(timeArray))
-        param_dict['startTime'] = start_time
+        if begin == 0:
+            s_start = datetime.strftime(datetime.now(), '%Y-%m-%d 00:00:00')
+            #s_start = s_start + ' 00:00:00'
+        else :
+            s_start = timestamp_to_string(begin)
+        print('start_time={}'.format(s_start))
+        param_dict['startTime'] = string_to_timestamp(s_start)
 
         s_end = '2024-1-2 00:00:00'
         timeArray = time.strptime(s_end, "%Y-%m-%d %H:%M:%S")
         # 转换为时间戳
         end_time = int(time.mktime(timeArray))        
         #param_dict['endTime'] = end_time
+        param_dict['limit'] = 5
         
         query_dict['params'] = param_dict
 
@@ -396,20 +414,42 @@ if __name__ == '__main__':
     print("Binance ws_api Monitor Start...")
     
     ws_client = MarketWebSocketClient()
-    ws_client.post_kline()
+    start = string_to_timestamp('2024-1-1 00:00:00')
+    finish = string_to_timestamp('2024-1-2 00:00:00')
+    print('start={}, finish={}'.format(start, finish))
+    last = start
+    while True:
+        print('开始请求K线数据，开始时间={}'.format(timestamp_to_string(last)))
+        ws_client.post_kline(begin=last)
 
-    # 4、获取返回结果
-    result = ws_client.ws.recv()
-    print("接收结果：", result)
-    result_dict = json.loads(result)
-    if 'result' in result_dict:
-        print('find result key')
-        datas = result_dict['result']
-        print('type of datas={}'.format(type(datas)))
-        print('count={}'.format(len(datas)))
-        for data in datas:
-            print('data={}'.format(data))
-
+        # 4、获取返回结果
+        result = ws_client.ws.recv()
+        #print("接收结果：", result)
+        result_dict = json.loads(result)
+        if 'result' in result_dict:
+            #print('find result key')
+            datas = result_dict['result']
+            #print('type of datas={}'.format(type(datas)))
+            print('count={}'.format(len(datas)))
+            
+            for i in range(len(datas)):
+                data = datas[i]
+                #print('type of data[0]={}'.format(type(data[0])))
+                begin = timestamp_to_string(data[0])
+                end = timestamp_to_string(data[6])
+                #end1 = timestamp_to_string(data[6]+1)
+                last = data[6]
+                if last + 1 >= finish:
+                    break
+                print('开始时间={}，结束时间={}，'.format(begin, end))
+                print('data={}'.format(data))
+            print('当前结束时间={}'.format(timestamp_to_string(last)))
+            last = last + 1
+            if last >= finish:
+                break
+        else:
+            break
+    print('最后结束时间={}'.format(timestamp_to_string(last)))
     # 5、关闭连接
     ws_client.ws.close()
     print("Binance ws_api Monitor End")
