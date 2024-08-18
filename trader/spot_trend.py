@@ -6,8 +6,8 @@
 
 
 from binance import BinanceSpotHttp, OrderStatus, OrderType, OrderSide, Interval
-from utils import config
-from utils import utility, round_to, dingding_info
+from utils.config import Config as config
+from utils import utility
 from enum import Enum
 import logging
 from datetime import datetime
@@ -86,9 +86,9 @@ class BinanceTrader(object):
                 cross_msg = "已经产生" + cross_msg
             else:
                 cross_msg = "即将产生" + cross_msg
-            dingding_info(config.dingding_token, config.dingding_prompt, config.symbol, cross_msg)
+            utility.dingding_info(config.dingding_token, config.dingding_prompt, config.symbol, cross_msg)
 
-
+    # 这个才是趋势交易的核心逻辑？
     def handle_data(self):
         if self.latest_klines is None:
             # 向服务器查询self.long+1根K线数据， 其中最后一根是未定型K线，前self.long根已定型。
@@ -176,7 +176,7 @@ class BinanceTrader(object):
             else:
                 print("get_kline没有获得当前K线数据!")
 
-    # 这个函数就是村长说的rebuild_all
+    # 这个函数怎么是网格交易的逻辑？？？跟趋势无关？？？
     def trend_trader(self):
         """
         执行核心逻辑，趋势交易的逻辑.
@@ -184,14 +184,15 @@ class BinanceTrader(object):
         """
         # 若刚启动，构建short，medium，long MA线跟踪
         if self.mma is None:
-            # 1个K线窗口时长为1小时
+            # 请求一个长线周期（self.long）的K线数据
+            # 问题：为什么要请求self.long长度的K线数据？？？下面根本没有用到。如果别的地方需要，为什么不在别的地方请求？？？
             self.latest_klines = self.http_client.get_kline(symbol=config.symbol, interval= Interval.HOUR_1, limit=self.long)
 
 
         bid_price, ask_price = self.get_bid_ask_price()
         print(f"bid_price: {bid_price}, ask_price: {ask_price}")
 
-        quantity = round_to(float(config.quantity), float(config.min_qty))
+        quantity = utility.round_to(float(config.quantity), float(config.min_qty))
 
         self.buy_orders.sort(key=lambda x: float(x['price']), reverse=True)  # 最高价到最低价.
         self.sell_orders.sort(key=lambda x: float(x['price']), reverse=True)  # 最高价到最低价.
@@ -215,23 +216,23 @@ class BinanceTrader(object):
                     # logging.info(f"买单成交时间: {datetime.now()}, 价格: {check_order.get('price')}, 数量: {check_order.get('origQty')}")
                     log_msg = "买单成交时间: {}, 价格: {}, 数量: {}".format(datetime.now(), check_order.get('price'), check_order.get('origQty'))
                     logging.info(log_msg)
-                    dingding_info(config.dingding_token, config.dingding_prompt, config.symbol, log_msg)
+                    utility.dingding_info(config.dingding_token, config.dingding_prompt, config.symbol, log_msg)
 
-                    sell_price = round_to(float(check_order.get("price")) * (1 + float(config.gap_percent)), float(config.min_price))
+                    sell_price = utility.round_to(float(check_order.get("price")) * (1 + float(config.gap_percent)), float(config.min_price))
 
                     if 0 < sell_price < ask_price:
                         # 防止价格
-                        sell_price = round_to(ask_price, float(config.min_price))
+                        sell_price = utility.round_to(ask_price, float(config.min_price))
 
                     new_sell_order = self.http_client.place_order(symbol=config.symbol, order_side=OrderSide.SELL, order_type=OrderType.LIMIT, quantity=quantity, price=sell_price)
                     if new_sell_order:
                         buy_delete_orders.append(buy_order)
                         self.sell_orders.append(new_sell_order)
 
-                    buy_price = round_to(float(check_order.get("price")) * (1 - float(config.gap_percent)),
+                    buy_price = utility.round_to(float(check_order.get("price")) * (1 - float(config.gap_percent)),
                                      config.min_price)
                     if buy_price > bid_price > 0:
-                        buy_price = round_to(bid_price, float(config.min_price))
+                        buy_price = utility.round_to(bid_price, float(config.min_price))
 
                     new_buy_order = self.http_client.place_order(symbol=config.symbol, order_side=OrderSide.BUY, order_type=OrderType.LIMIT, quantity=quantity, price=buy_price)
                     if new_buy_order:
@@ -259,12 +260,12 @@ class BinanceTrader(object):
                 elif check_order.get('status') == OrderStatus.FILLED.value:
                     log_msg = "卖单成交时间: {}, 价格: {}, 数量: {}".format(datetime.now(), check_order.get('price'), check_order.get('origQty'))
                     logging.info(log_msg)
-                    dingding_info(config.dingding_token, config.dingding_prompt, config.symbol, log_msg)
+                    utility.dingding_info(config.dingding_token, config.dingding_prompt, config.symbol, log_msg)
 
                     # 卖单成交，先下买单.
-                    buy_price = round_to(float(check_order.get("price")) * (1 - float(config.gap_percent)), float(config.min_price))
+                    buy_price = utility.round_to(float(check_order.get("price")) * (1 - float(config.gap_percent)), float(config.min_price))
                     if buy_price > bid_price > 0:
-                        buy_price = round_to(bid_price, float(config.min_price))
+                        buy_price = utility.round_to(bid_price, float(config.min_price))
 
                     new_buy_order = self.http_client.place_order(symbol=config.symbol, order_side=OrderSide.BUY,
                                                              order_type=OrderType.LIMIT, quantity=quantity, price=buy_price)
@@ -272,11 +273,11 @@ class BinanceTrader(object):
                         sell_delete_orders.append(sell_order)
                         self.buy_orders.append(new_buy_order)
 
-                    sell_price = round_to(float(check_order.get("price")) * (1 + float(config.gap_percent)), float(config.min_price))
+                    sell_price = utility.round_to(float(check_order.get("price")) * (1 + float(config.gap_percent)), float(config.min_price))
 
                     if 0 < sell_price < ask_price:
                         # 防止价格
-                        sell_price = round_to(ask_price, float(config.min_price))
+                        sell_price = utility.round_to(ask_price, float(config.min_price))
 
                     new_sell_order = self.http_client.place_order(symbol=config.symbol, order_side=OrderSide.SELL,
                                                                  order_type=OrderType.LIMIT, quantity=quantity,
@@ -296,7 +297,7 @@ class BinanceTrader(object):
         # 没有买单的时候.
         if len(self.buy_orders) <= 0:
             if bid_price > 0:
-                price = round_to(bid_price * (1 - float(config.gap_percent)), float(config.min_price))
+                price = utility.round_to(bid_price * (1 - float(config.gap_percent)), float(config.min_price))
                 buy_order = self.http_client.place_order(symbol=config.symbol,order_side=OrderSide.BUY, order_type=OrderType.LIMIT, quantity=quantity,price=price)
                 if buy_order:
                     self.buy_orders.append(buy_order)
@@ -313,7 +314,7 @@ class BinanceTrader(object):
         # 没有卖单的时候.
         if len(self.sell_orders) <= 0:
             if ask_price > 0:
-                price = round_to(ask_price * (1 + float(config.gap_percent)), float(config.min_price))
+                price = utility.round_to(ask_price * (1 + float(config.gap_percent)), float(config.min_price))
                 order = self.http_client.place_order(symbol=config.symbol,order_side=OrderSide.SELL, order_type=OrderType.LIMIT, quantity=quantity,price=price)
                 if order:
                     self.sell_orders.append(order)

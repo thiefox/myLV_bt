@@ -10,15 +10,14 @@ from enum import Enum
 from threading import Lock
 from binance.authentication import hmac_hashing, rsa_signature, ed25519_signature
 
-
 class OrderStatus(Enum):
-    NEW = "NEW"
-    PARTIALLY_FILLED = "PARTIALLY_FILLED"
-    FILLED = "FILLED"
-    CANCELED = "CANCELED"
-    PENDING_CANCEL = "PENDING_CANCEL"
+    NEW = "NEW"                             #服务商接受了该订单
+    PARTIALLY_FILLED = "PARTIALLY_FILLED"   #该订单已部分成交
+    FILLED = "FILLED"                       #该订单已全部成交
+    CANCELED = "CANCELED"                   #该订单已取消
+    PENDING_CANCEL = "PENDING_CANCEL"       #该订单在取消中？
     REJECTED = "REJECTED"
-    EXPIRED = "EXPIRED"
+    EXPIRED = "EXPIRED"                     #该订单已过期
 
 
 class OrderType(Enum):

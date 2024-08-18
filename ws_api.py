@@ -306,7 +306,7 @@ class MarketWebSocketClient(object):
         query_dict['params'] = param_dict
 
         request = json.dumps(query_dict)
-        print('request={}'.format(request))
+        print('URL request={}'.format(request))
         self.ws.send(request)
         return 
 
@@ -426,6 +426,17 @@ if __name__ == '__main__':
         result = ws_client.ws.recv()
         #print("接收结果：", result)
         result_dict = json.loads(result)
+        if 'id' in result_dict:
+            print('find id key')
+            print('id={}'.format(result_dict['id']))
+        if 'status' in result_dict:
+            print('find status key')
+            print('status={}'.format(result_dict['status']))
+        if 'rateLimits' in result_dict:
+            print('find rateLimits key')
+            print('rateLimits={}'.format(result_dict['rateLimits']))
+        
+
         if 'result' in result_dict:
             #print('find result key')
             datas = result_dict['result']
@@ -434,12 +445,13 @@ if __name__ == '__main__':
             
             for i in range(len(datas)):
                 data = datas[i]
-                #print('type of data[0]={}'.format(type(data[0])))
+                print('type of data[0]={}, i={}, finish={}'.format(type(data[0]), i, finish))
                 begin = timestamp_to_string(data[0])
                 end = timestamp_to_string(data[6])
                 #end1 = timestamp_to_string(data[6]+1)
                 last = data[6]
                 if last + 1 >= finish:
+                    print('跳出循环1，begin={}, end={}, last={}, finish={}'.format(begin, end, last, finish))
                     break
                 print('开始时间={}，结束时间={}，'.format(begin, end))
                 print('data={}'.format(data))
