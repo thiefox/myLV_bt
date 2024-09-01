@@ -52,21 +52,6 @@ class Interval(Enum):
     WEEK_1 = '1w'
     MONTH_1 = '1M'
 
-#int时间戳转换为字符串时间
-def timestamp_to_string(time_stamp : int) -> str:
-    #print('input={}'.format(time_stamp/1000))
-    
-    time_array = time.localtime(float(time_stamp/1000))
-    str_date = time.strftime("%Y-%m-%d %H:%M:%S", time_array)
-    return str_date
-
-#字符串时间转换为int时间戳
-def string_to_timestamp(str_date : str) -> int:
-    #print('input={}'.format(str_date))
-    time_array = time.strptime(str_date, "%Y-%m-%d %H:%M:%S")
-    time_stamp = int(time.mktime(time_array) * 1000)
-    return time_stamp
-
 class MarketHttpClient(object):
 
     def __init__(self, market="spot", proxy_host=None, proxy_port=0, timeout=5, try_counts=5):
@@ -292,9 +277,9 @@ class MarketWebSocketClient(object):
             s_start = datetime.strftime(datetime.now(), '%Y-%m-%d 00:00:00')
             #s_start = s_start + ' 00:00:00'
         else :
-            s_start = timestamp_to_string(begin)
+            s_start = utility.timestamp_to_string(begin)
         print('start_time={}'.format(s_start))
-        param_dict['startTime'] = string_to_timestamp(s_start)
+        param_dict['startTime'] = utility.string_to_timestamp(s_start)
 
         s_end = '2024-1-2 00:00:00'
         timeArray = time.strptime(s_end, "%Y-%m-%d %H:%M:%S")
@@ -413,13 +398,18 @@ class BinanceSpider(object):
 if __name__ == '__main__':
     print("Binance ws_api Monitor Start...")
     
+    # Example usage
+    Now = datetime.now()
+    Now = Now.timestamp()
+    print('当前时间={}'.format(Now))
+
     ws_client = MarketWebSocketClient(timeout=60)
-    start = string_to_timestamp('2024-1-1 00:00:00')
-    finish = string_to_timestamp('2024-1-2 00:00:00')
+    start = utility.string_to_timestamp('2024-1-1 00:00:00')
+    finish = utility.string_to_timestamp('2024-1-2 00:00:00')
     print('start={}, finish={}'.format(start, finish))
     last = start
     while True:
-        print('开始请求K线数据，开始时间={}'.format(timestamp_to_string(last)))
+        print('开始请求K线数据，开始时间={}'.format(utility.timestamp_to_string(last)))
         ws_client.post_kline(begin=last)
 
         # 4、获取返回结果
@@ -446,8 +436,8 @@ if __name__ == '__main__':
             for i in range(len(datas)):
                 data = datas[i]
                 print('type of data[0]={}, i={}, finish={}'.format(type(data[0]), i, finish))
-                begin = timestamp_to_string(data[0])
-                end = timestamp_to_string(data[6])
+                begin = utility.timestamp_to_string(data[0])
+                end = utility.timestamp_to_string(data[6])
                 #end1 = timestamp_to_string(data[6]+1)
                 last = data[6]
                 if last + 1 >= finish:
@@ -455,13 +445,13 @@ if __name__ == '__main__':
                     break
                 print('开始时间={}，结束时间={}，'.format(begin, end))
                 print('data={}'.format(data))
-            print('当前结束时间={}'.format(timestamp_to_string(last)))
+            print('当前结束时间={}'.format(utility.timestamp_to_string(last)))
             last = last + 1
             if last >= finish:
                 break
         else:
             break
-    print('最后结束时间={}'.format(timestamp_to_string(last)))
+    print('最后结束时间={}'.format(utility.timestamp_to_string(last)))
     # 5、关闭连接
     ws_client.ws.close()
     print("Binance ws_api Monitor End")

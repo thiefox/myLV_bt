@@ -8,6 +8,8 @@ import requests
 import json
 from pathlib import Path
 from decimal import Decimal
+import os
+import time
 
 #确保临时目录存在
 def _get_trader_dir(temp_name: str):
@@ -99,3 +101,33 @@ def dingding_info(token: str, prompt: str, symbol: str, content: str):
         }
     }
     requests.post(api_url, json.dumps(json_text), headers=headers).content
+    return
+
+#生成K线数据文件名
+#中间目录结构不存在则创建
+def gen_kline_file_name(symbol : str, year: int, month: int, interval : str) -> str:
+    base_dir = os.path.join(os.getcwd(), 'data\\{}\\kline'.format(symbol))
+    year_dir = os.path.join(base_dir, str(year))
+    month_str = str(month).zfill(2)
+    month_dir = os.path.join(year_dir, month_str)
+    os.makedirs(month_dir, exist_ok=True)
+    file_name = '{}-{}-{}.json'.format(year, month_str, interval)
+    file_name = os.path.join(month_dir, file_name)
+    return file_name
+
+#币安int时间戳转换为字符串时间
+#字符串时间格式='2000-01-01 00:00:00'
+def timestamp_to_string(time_stamp : int) -> str:
+    #print('input={}'.format(time_stamp/1000))
+    time_array = time.localtime(float(time_stamp/1000))
+    str_date = time.strftime("%Y-%m-%d %H:%M:%S", time_array)
+    return str_date
+
+#字符串时间转换为币安int时间戳
+#字符串时间格式='2000-01-01 00:00:00'
+def string_to_timestamp(str_date : str) -> int:
+    #print('input={}'.format(str_date))
+    time_array = time.strptime(str_date, "%Y-%m-%d %H:%M:%S")
+    time_stamp = int(time.mktime(time_array) * 1000)
+    return time_stamp
+
