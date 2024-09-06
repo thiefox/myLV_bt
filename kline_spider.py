@@ -266,11 +266,11 @@ def calc_macd_profit(year_begin : int, year_end : int, interval : kline_interval
         closed_price = float(closed_price)
         time_str = timestamp_to_string(klines[index][0])
         if year == '':
-            print('第一个统计年份={}, 资金={}，持币={}，币价={}'.format(time_str[:4], cash, amount, closed_price))
+            print('第一个统计年份={}, 资金={}，持币={}，币价={}'.format(time_str[:10], cash, amount, closed_price))
             year = time_str[:4]
         elif year != time_str[:4]:
             print('------------------------------------')
-            print('进入新年份={}, 资金={}，持币={}，币价={}. 合计={}'.format(time_str[:4], cash, amount, closed_price, 
+            print('进入新年份={}, 资金={}，持币={}，币价={}. 合计={}'.format(time_str[:10], cash, amount, closed_price, 
                 round(cash + amount * closed_price, 2)))
             year = time_str[:4]
             
@@ -325,7 +325,7 @@ if __name__ == '__main__':
 
     #get_BTC_klines_year(2024, kline_interval.d1)
     #test_calc_macd(kline_interval.d1)
-    calc_macd_profit(2017, 2025, kline_interval.d1)
+    calc_macd_profit(2018, 2019, kline_interval.d1)
 
     sys.stdout = tmp_out
     sys.stderr = tmp_err
