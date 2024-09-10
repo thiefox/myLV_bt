@@ -36,10 +36,12 @@ print(df.head())
 # Data for Shanghai Composite Index in 2023
 #dates = df.index.strftime('%b')  # Extract month abbreviations from index dates
 dates = df['trade_date'].values
+print('type 1 of dates ={}'.format(type(dates)))
 index_values = df['close'].values  # Extract closing prices from the 'close' column
+print('type of index_values ={}'.format(type(index_values)))
 
 dates = pd.to_datetime(dates)
-
+print('type 2 of dates ={}'.format(type(dates)))
 #plt的横轴显示月份
 #plt.figure(figsize=(10,6), dpi=1000)
 

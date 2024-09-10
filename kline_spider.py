@@ -256,7 +256,13 @@ def calc_macd_profit(year_begin : int, year_end : int, interval : kline_interval
     print('开始计算历年的MACD总收益...')
     if not klines:
         return
+    dates = [timestamp_to_string(kline[0]) for kline in klines]
+    #把dates转换为numpy数组
+    dates = numpy.array(dates)
+    closed_prices = [float(kline[4]) for kline in klines]
     macd, signal = calculate_macd(klines)
+    assert(isinstance(macd, numpy.ndarray))
+    profits = [0] * len(macd)
     crossovers = find_macd_crossovers(macd, signal)
     print('共找到{}个MACD交叉点'.format(len(crossovers)))
     year = ''
