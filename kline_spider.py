@@ -239,6 +239,12 @@ def test_calc_macd(interval : kline_interval):
         print("Failed to fetch kline data.")
     return
 
+#计算总资产
+def calc_total_asset(cash : float, amount : float, price : float) -> float:
+    #assert(isinstance(amount, float))
+    assert(isinstance(price, float))
+    return round(cash + amount * price, 2)
+
 #原始资金1万，遇到金叉买入，遇到死叉卖出，交易手续费0.1%，计算收益
 def calc_macd_profit(year_begin : int, year_end : int, interval : kline_interval) :
     cash = float(10000)     #初始资金
@@ -262,7 +268,8 @@ def calc_macd_profit(year_begin : int, year_end : int, interval : kline_interval
     closed_prices = [float(kline[4]) for kline in klines]
     macd, signal = calculate_macd(klines)
     assert(isinstance(macd, numpy.ndarray))
-    profits = [0] * len(macd)
+    profits = [0] * len(macd)       #每日的收益
+    profits[0] = cash
     crossovers = find_macd_crossovers(macd, signal)
     print('共找到{}个MACD交叉点'.format(len(crossovers)))
     year = ''
@@ -272,15 +279,21 @@ def calc_macd_profit(year_begin : int, year_end : int, interval : kline_interval
         closed_price = float(closed_price)
         time_str = timestamp_to_string(klines[index][0])
         if year == '':
-            print('第一个统计年份={}, 资金={}，持币={}，币价={}'.format(time_str[:10], cash, amount, closed_price))
+            print('第一个统计年份={}, 资金={}，持币={}，币价={}. 合计={}'.format(time_str[:10], cash, amount, closed_price,
+                calc_total_asset(cash, amount, closed_price)))
             year = time_str[:4]
         elif year != time_str[:4]:
             print('------------------------------------')
             print('进入新年份={}, 资金={}，持币={}，币价={}. 合计={}'.format(time_str[:10], cash, amount, closed_price, 
-                round(cash + amount * closed_price, 2)))
+                calc_total_asset(cash, amount, closed_price)))
             year = time_str[:4]
             
         if type == '金叉':
+            for i in range(index-1, 0, -1):
+                if profits[i] == 0:
+                    profits[i] = calc_total_asset(cash, amount, float(klines[i][4]))
+                else :
+                    break
             if cash > 0:
                 buy_price = float(klines[index][4])
                 useable_cash = cash * (1 - fee)
@@ -290,27 +303,49 @@ def calc_macd_profit(year_begin : int, year_end : int, interval : kline_interval
                 cash = round(cash, 2)
                 assert(amount >= 0)
                 amount += buy_amount
-                print('金叉买入({})，价格={}, 币总数量={}, 金额={}，剩余总资金={}'.format(time_str, buy_price, amount, amount*buy_price, cash))
+                print('金叉买入({})，价格={}, 币总数量={}, 金额={}，剩余总资金={}.合计={}'.format(time_str, buy_price, amount, 
+                    amount*buy_price, cash, calc_total_asset(cash, amount, buy_price)))
+                profits[index] = calc_total_asset(cash, amount, closed_price)
+
             else :
                 print('金叉买入，资金不足={}'.format(cash))
-        else :
+        else :  #死叉
+            for i in range(index-1, 0, -1):
+                if profits[i] == 0:
+                    profits[i] = calc_total_asset(cash, amount, float(klines[i][4]))
+                else :
+                    break
             if amount > 0:
                 sell_price = float(klines[index][4])
                 sell_cash = amount * sell_price * (1 - fee)
                 cash += sell_cash
                 cash = round(cash, 2)
-                print('死叉卖出({})，价格={}, 数量={}, 卖出获利={}，剩余总资金={}'.format(time_str, sell_price, amount, sell_cash, cash))
+                print('死叉卖出({})，价格={}, 数量={}, 卖出获利={}. 合计={}'.format(time_str, sell_price, amount, sell_cash, cash))
                 amount = 0
+                profits[index] = calc_total_asset(cash, amount, closed_price)
             else :
-                print('死叉卖出，无持仓. 资金={}'.format(cash))
+                print('死叉卖出，无持仓. 合计={}'.format(cash))
 
+    for i in range(len(profits)-1, 0, -1):
+        if profits[i] == 0:
+            profits[i] = calc_total_asset(cash, amount, float(klines[i][4]))
+        else :
+            break
+    #最后一天卖出
     if amount > 0:
         sell_price = float(klines[-1][4])
         time_str = timestamp_to_string(klines[-1][0])
         cash += amount * sell_price * (1 - fee)
         amount = 0
-        print('最后卖出({})，价格={}, 数量={}, 金额={}'.format(time_str, sell_price, amount, amount*buy_price))
+        print('最后卖出({})，价格={}, 数量={}, 合计={}'.format(time_str, sell_price, amount, cash))
     print('最终资金={}, 收益={}'.format(cash, cash-10000))
+    if profits[-1] == 0:
+        profits[-1] = calc_total_asset(cash, amount, float(closed_prices[-1]))
+    print('开始打印每日收益...')
+    for i in range(len(profits)):
+        print('index={}, date={}, profit={}'.format(i, dates[i], profits[i]))
+
+
     return 
 
 
@@ -326,12 +361,13 @@ if __name__ == '__main__':
     #把print输出到日志文件
     tmp_out = sys.stdout
     tmp_err = sys.stderr
-    sys.stdout = log_adapter.LoggerWriter(logger, logging.INFO)
-    sys.stderr = log_adapter.LoggerWriter(logger, logging.ERROR)
+    #sys.stdout = log_adapter.LoggerWriter(logger, logging.INFO)
+    #sys.stderr = log_adapter.LoggerWriter(logger, logging.ERROR)
 
     #get_BTC_klines_year(2024, kline_interval.d1)
     #test_calc_macd(kline_interval.d1)
-    calc_macd_profit(2018, 2019, kline_interval.d1)
+    #calc_macd_profit(2018, 2019, kline_interval.d1)
+    calc_macd_profit(2017, 2024, kline_interval.d1)
 
     sys.stdout = tmp_out
     sys.stderr = tmp_err
