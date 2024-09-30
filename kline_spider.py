@@ -13,6 +13,8 @@ import talib
 
 from enum import Enum
 
+import draw
+
 class kline_interval(str, Enum):
     h1 = '1h'
     h4 = '4h'
@@ -27,6 +29,11 @@ def timestamp_to_string(time_stamp : int) -> str:
     time_array = time.localtime(float(time_stamp/1000))
     str_date = time.strftime("%Y-%m-%d %H:%M:%S", time_array)
     return str_date
+
+#int时间戳转换为datetime时间
+def timestamp_to_datetime(time_stamp : int) -> datetime:
+    #print('input={}'.format(time_stamp/1000))
+    return datetime.fromtimestamp(float(time_stamp/1000))
 
 #字符串时间转换为int时间戳
 def string_to_timestamp(str_date : str) -> int:
@@ -143,6 +150,7 @@ def save_kline(symbol : str, year : int, month : int, interval : kline_interval)
     else :
         return 1
 
+#获取一年的K线数据并保存到文件
 def get_BTC_klines_year(year : int, interval : kline_interval):
     symbol = "BTCUSDT"
     for i in range(1, 13):
@@ -170,7 +178,7 @@ def load_klines(year : int, month : int, interval : kline_interval) -> list:
     return klines
 
 #载入一年的K线数据
-def load_klines_year(year : int, interval : kline_interval) -> list:
+def load_klines_1Y(year : int, interval : kline_interval) -> list:
     klines = list()
     for i in range(1, 13):
         month_klines = load_klines(year, i, interval)
@@ -179,6 +187,28 @@ def load_klines_year(year : int, interval : kline_interval) -> list:
         else :
             print('异常：未获取到{}年-{}月的K线数据'.format(year, i))
     return klines
+
+#载入多个年份的K线数据
+def load_klines_years(begin_year : int, end_year : int, interval : kline_interval) -> list:
+    assert(begin_year < end_year)
+    klines = list()
+    for i in range(begin_year, end_year):
+        print('处理年份={}'.format(i))
+        klines.extend(load_klines_1Y(i, interval))
+    return klines
+
+def draw_klines(b_year : int, e_year : int, interval : kline_interval):
+    klines = load_klines_years(b_year, e_year, interval)
+    if klines:
+        print('共获取到K线数据记录={}'.format(len(klines)))
+        dates = [timestamp_to_datetime(kline[0]) for kline in klines]
+        #把dates转换为numpy数组
+        dates = numpy.array(dates)
+        closed_prices = [float(kline[4]) for kline in klines]
+        draw.draw_kline(dates, closed_prices)
+    else:
+        print("Failed to fetch kline data.")
+    return
 
 def calculate_macd(klines) -> tuple:
     close_prices = [float(kline[4]) for kline in klines]
@@ -192,8 +222,11 @@ def calculate_macd(klines) -> tuple:
     print('共计算出MACD记录数={}'.format(len(macd)))
     print('开始打印MACD原始值...')
     for i in range(len(macd)):
+        '''
         if i >= 33 :    #macd和signal的前33个值为0(nan)
             print('index={}, macd={}, signal={}, hits={}'.format(i, macd[i], signal[i], hist[i]))
+        '''
+        pass
     print('打印MACD原始值结束.')
     return macd, signal
 
@@ -216,11 +249,7 @@ def find_macd_crossovers(macd, signal) -> list:
 def test_calc_macd(interval : kline_interval):
     #begin = utility.string_to_timestamp('2024-01-01 00:00:00')
     #klines = get_kline_data("BTCUSDT", 6, begin, 100)
-    klines = list()
-    for i in range(2017, 2025):
-        print('处理年份={}'.format(i))
-        klines.extend(load_klines_year(i, interval))
-
+    klines = load_klines_years(2017, 2025, interval)
     if klines:
         print('共获取到K线数据记录={}'.format(len(klines)))
         macd, signal = calculate_macd(klines)
@@ -245,55 +274,40 @@ def calc_total_asset(cash : float, amount : float, price : float) -> float:
     assert(isinstance(price, float))
     return round(cash + amount * price, 2)
 
-#原始资金1万，遇到金叉买入，遇到死叉卖出，交易手续费0.1%，计算收益
-def calc_macd_profit(year_begin : int, year_end : int, interval : kline_interval) :
+#生成MACD模式的每日收益曲线
+def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_interval) -> list:
     cash = float(10000)     #初始资金
     amount = float(0)       #持有的币数量
     fee = 0.001
     buy_price = 0
-    klines = list()
-    for i in range(year_begin, year_end):
-        print('处理年份={}'.format(i))
-        year_lines = load_klines_year(i, interval)
-        print('载入{}年的K线数据记录={}'.format(i, len(year_lines)))
-        klines.extend(year_lines)
-    #klines = load_klines_year(year, interval)
+    klines = load_klines_years(year_begin, year_end, interval)
     print('共载入的K线数据记录={}'.format(len(klines)))
-    print('开始计算历年的MACD总收益...')
-    if not klines:
-        return
+    if len(klines) == 0:
+        return list()
+    print('开始计算MACD模式的每日收益...')
     dates = [timestamp_to_string(kline[0]) for kline in klines]
     #把dates转换为numpy数组
     dates = numpy.array(dates)
     closed_prices = [float(kline[4]) for kline in klines]
     macd, signal = calculate_macd(klines)
     assert(isinstance(macd, numpy.ndarray))
+    assert(len(macd) == len(klines))
     profits = [0] * len(macd)       #每日的收益
     profits[0] = cash
     crossovers = find_macd_crossovers(macd, signal)
     print('共找到{}个MACD交叉点'.format(len(crossovers)))
-    year = ''
-    for crossover in crossovers:
+    for crossover in crossovers:        #叉叉处理(金叉买入，死叉卖出)
         index, type, cur, before = crossover
         closed_price = klines[index][4]
         closed_price = float(closed_price)
         time_str = timestamp_to_string(klines[index][0])
-        if year == '':
-            print('第一个统计年份={}, 资金={}，持币={}，币价={}. 合计={}'.format(time_str[:10], cash, amount, closed_price,
-                calc_total_asset(cash, amount, closed_price)))
-            year = time_str[:4]
-        elif year != time_str[:4]:
-            print('------------------------------------')
-            print('进入新年份={}, 资金={}，持币={}，币价={}. 合计={}'.format(time_str[:10], cash, amount, closed_price, 
-                calc_total_asset(cash, amount, closed_price)))
-            year = time_str[:4]
-            
+        #计算这个叉跟前个叉之间的每日收益
+        for i in range(index-1, 0, -1):
+            if profits[i] == 0:
+                profits[i] = calc_total_asset(cash, amount, float(klines[i][4]))
+            else :
+                break
         if type == '金叉':
-            for i in range(index-1, 0, -1):
-                if profits[i] == 0:
-                    profits[i] = calc_total_asset(cash, amount, float(klines[i][4]))
-                else :
-                    break
             if cash > 0:
                 buy_price = float(klines[index][4])
                 useable_cash = cash * (1 - fee)
@@ -306,15 +320,9 @@ def calc_macd_profit(year_begin : int, year_end : int, interval : kline_interval
                 print('金叉买入({})，价格={}, 币总数量={}, 金额={}，剩余总资金={}.合计={}'.format(time_str, buy_price, amount, 
                     amount*buy_price, cash, calc_total_asset(cash, amount, buy_price)))
                 profits[index] = calc_total_asset(cash, amount, closed_price)
-
             else :
                 print('金叉买入，资金不足={}'.format(cash))
         else :  #死叉
-            for i in range(index-1, 0, -1):
-                if profits[i] == 0:
-                    profits[i] = calc_total_asset(cash, amount, float(klines[i][4]))
-                else :
-                    break
             if amount > 0:
                 sell_price = float(klines[index][4])
                 sell_cash = amount * sell_price * (1 - fee)
@@ -341,13 +349,33 @@ def calc_macd_profit(year_begin : int, year_end : int, interval : kline_interval
     print('最终资金={}, 收益={}'.format(cash, cash-10000))
     if profits[-1] == 0:
         profits[-1] = calc_total_asset(cash, amount, float(closed_prices[-1]))
+    '''
     print('开始打印每日收益...')
     for i in range(len(profits)):
         print('index={}, date={}, profit={}'.format(i, dates[i], profits[i]))
+    '''
+    return profits
 
+def draw_kline_and_profit(b_year : int, e_year : int, interval : kline_interval):
+    if e_year - b_year == 1:
+        UNIT = 'M'
+    else :
+        UNIT = 'Y'
+    klines = load_klines_years(b_year, e_year, interval)
+    if klines:
+        print('共获取到K线数据记录={}'.format(len(klines)))
+        dates = [timestamp_to_datetime(kline[0]) for kline in klines]
 
-    return 
-
+        #dates = [timestamp_to_string(kline[0]) for kline in klines]
+        #print('dates[0]={}'.format(dates[0]))
+        #dates_2 = [datetime.strptime(d, '%Y-%m-%d %H:%M:%S').date() for d in dates]
+        #把dates转换为numpy数组
+        dates = numpy.array(dates)
+        closed_prices = [float(kline[4]) for kline in klines]
+        profits = calc_MACD_daily_profit(b_year, e_year, interval)
+        draw.draw_kline_and_profile(dates, closed_prices, profits, XUnit=UNIT)
+        #draw.draw_kline(dates, closed_prices)    
+    return
 
 if __name__ == '__main__':
     print("KLine Spider Start...")
@@ -366,8 +394,10 @@ if __name__ == '__main__':
 
     #get_BTC_klines_year(2024, kline_interval.d1)
     #test_calc_macd(kline_interval.d1)
-    #calc_macd_profit(2018, 2019, kline_interval.d1)
-    calc_macd_profit(2017, 2024, kline_interval.d1)
+    #calc_MACD_daily_profit(2018, 2019, kline_interval.d1)
+    #calc_MACD_daily_profit(2017, 2024, kline_interval.d1)
+    draw_klines(2023, 2024, kline_interval.d1)
+    #draw_kline_and_profit(2017, 2025, kline_interval.d1)
 
     sys.stdout = tmp_out
     sys.stderr = tmp_err
