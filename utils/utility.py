@@ -10,6 +10,7 @@ from pathlib import Path
 from decimal import Decimal
 import os
 import time
+from datetime import datetime
 
 #确保临时目录存在
 def _get_trader_dir(temp_name: str):
@@ -130,4 +131,10 @@ def string_to_timestamp(str_date : str) -> int:
     time_array = time.strptime(str_date, "%Y-%m-%d %H:%M:%S")
     time_stamp = int(time.mktime(time_array) * 1000)
     return time_stamp
+
+#int时间戳转换为datetime时间
+def timestamp_to_datetime(time_stamp : int) -> datetime:
+    #print('input={}'.format(time_stamp/1000))
+    return datetime.fromtimestamp(float(time_stamp/1000))
+
 

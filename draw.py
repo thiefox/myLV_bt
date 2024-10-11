@@ -4,9 +4,21 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 # 画K线
-def draw_kline(dates : numpy.ndarray, klines : list):
+def draw_kline(dates : numpy.ndarray, klines : list, XUnit : str = 'M'):
     # Create a new figure and axis
     fig, ax = plt.subplots()
+
+    if XUnit == 'Y':
+        ax.xaxis.set_major_locator(mdates.YearLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+    elif XUnit == 'D':
+        ax.xaxis.set_major_locator(mdates.DayLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    else :
+        ax.xaxis.set_major_locator(mdates.MonthLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+        #ax.xaxis.set_major_formatter(mdates.AutoDateFormatter(ax.xaxis.get_major_locator()))
+        #ax.xaxis.set_major_formatter(mdates.AutoDateFormatter(mdates.MonthLocator
 
     # Plot the candlestick chart
     ax.plot(dates, klines)
@@ -42,7 +54,7 @@ def draw_kline_and_profile(dates : numpy.ndarray, klines : list, profiles : list
 
     ax.set_xlabel('日期')
     ax.set_ylabel('趋势')
-    ax.set_title('K线和收益曲线')
+    ax.set_title('K线(红)和收益(蓝)')
 
     #ma.plot(dates, index_values, color='blue')
     # 画K线
