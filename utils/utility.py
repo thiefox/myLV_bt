@@ -116,25 +116,34 @@ def gen_kline_file_name(symbol : str, year: int, month: int, interval : str) -> 
     file_name = os.path.join(month_dir, file_name)
     return file_name
 
-#币安int时间戳转换为字符串时间
-#字符串时间格式='2000-01-01 00:00:00'
-def timestamp_to_string(time_stamp : int) -> str:
-    #print('input={}'.format(time_stamp/1000))
-    time_array = time.localtime(float(time_stamp/1000))
-    str_date = time.strftime("%Y-%m-%d %H:%M:%S", time_array)
-    return str_date
-
-#字符串时间转换为币安int时间戳
-#字符串时间格式='2000-01-01 00:00:00'
-def string_to_timestamp(str_date : str) -> int:
-    #print('input={}'.format(str_date))
-    time_array = time.strptime(str_date, "%Y-%m-%d %H:%M:%S")
-    time_stamp = int(time.mktime(time_array) * 1000)
-    return time_stamp
-
 #int时间戳转换为datetime时间
 def timestamp_to_datetime(time_stamp : int) -> datetime:
     #print('input={}'.format(time_stamp/1000))
     return datetime.fromtimestamp(float(time_stamp/1000))
+
+#币安int时间戳转换为字符串时间
+#字符串时间格式='2000-01-01 00:00:00'
+def timestamp_to_string(time_stamp : int, ONLY_DATE = False) -> str:
+    assert(isinstance(time_stamp, int))
+    #print('input={}'.format(time_stamp/1000))
+    time_array = time.localtime(float(time_stamp/1000))
+    if ONLY_DATE :
+        str_date = time.strftime("%Y-%m-%d", time_array)
+    else :
+        str_date = time.strftime("%Y-%m-%d %H:%M:%S", time_array)
+    return str_date
+
+#字符串时间转换为币安int时间戳
+#字符串时间格式='2000-01-01 00:00:00'
+def string_to_timestamp(str_date : str, ONLY_DATE = False) -> int:
+    #print('input={}'.format(str_date))
+    if ONLY_DATE :
+        time_array = time.strptime(str_date, "%Y-%m-%d")
+    else :
+        time_array = time.strptime(str_date, "%Y-%m-%d %H:%M:%S")
+    time_stamp = int(time.mktime(time_array) * 1000)
+    return time_stamp
+
+
 
 
