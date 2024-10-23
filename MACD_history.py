@@ -11,7 +11,7 @@ from base_item import kline_interval, trade_symbol, MACD_CROSS
 import base_item
 import data_loader
 import fin_util
-import draw
+import draw_profit
 
 #生成MACD模式每日收益曲线
 def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_interval) -> list:
@@ -32,10 +32,23 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
     #把dates转换为numpy数组
     dates = np.array(dates)
     closed_prices = [float(kline[4]) for kline in klines]
+    BEGIN_INDEX = 0
+    END_INDEX = -1
+    #BEGIN_INDEX = 19
+    #END_INDEX = 54
+    if END_INDEX == -1 :
+        END_INDEX = len(closed_prices)
+    closed_prices = closed_prices[BEGIN_INDEX:END_INDEX]
+    dates = dates[BEGIN_INDEX:END_INDEX]
+        
     pi = fin_util.prices_info(closed_prices)
+    #pcn = min(100, len(closed_prices))
+    #print('开始打印从{}到{}共({}/{})天的价格数据...'.format(dates[0], dates[-1], pcn, END_INDEX-BEGIN_INDEX))
+    #pi.print(DATES=dates)
+    #print('打印{}天价格数据结束.'.format(pcn))
     macd, signal, hist = pi.calculate_macd()
     assert(isinstance(macd, np.ndarray))
-    assert(len(macd) == len(klines))
+    #assert(len(macd) == len(klines))
     crossovers = fin_util.find_macd_crossovers(macd, signal, hist)
     print('共找到{}个MACD交叉点'.format(len(crossovers)))
     accounts = [base_item.part_account('13', 'thiefox')] * len(klines)       #每日的账户信息
@@ -97,7 +110,7 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
     if accounts[-1].get_amount(BTCUSDT) > 0:
         sell_price = closed_prices[-1]
         #date_str = datetime.strptime(dates[-1], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
-        print('重要：最后一天卖出操作，日期={}, 价格={}, 数量={}...'.format(dates[-1], sell_price, accounts[-1].get_amount(BTCUSDT)))
+        print('重要：最后一天卖出操作，日期={}, 价格={}, 数量={:.4f}...'.format(dates[-1], sell_price, accounts[-1].get_amount(BTCUSDT)))
         accounts[-1].sell_all(BTCUSDT, sell_price, FEE)
         operations.append(len(accounts)-1)
         
@@ -110,9 +123,10 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
         price_dict = {BTCUSDT: closed_prices[i], }
         profits[i] = accounts[i].total_asset(price_dict)
 
-    print('起始资金={}, 起始币数量={}, 起始币价格={}, 结束币价格={}'.format(INIT_CASH, 0, INIT_PRICE, closed_prices[-1]))
-    print('MACD模式最终资金={}, 最终收益={}.'.format(accounts[-1].cash, accounts[-1].cash-INIT_CASH))
-    
+    print('起始资金={}, 起始币数量={}, 起始币价格={:.2f}, 结束币价格={:.2f}'.format(INIT_CASH, 0, INIT_PRICE, closed_prices[-1]))
+    print('重要：MACD模式最终资金={}, 盈亏={}，收益率={:.2f}%'.format(accounts[-1].cash, accounts[-1].cash-INIT_CASH),
+        fin_util.calc_scale(INIT_CASH, accounts[-1].cash)*100)
+
     print('金叉买入次数={}, 金叉买入列表={}.'.format(len(gold_ops), ', '.join([str(x) for x in gold_ops])))
     print('死叉卖出次数={}, 死叉卖出列表={}.'.format(len(dead_ops), ', '.join([str(x) for x in dead_ops])))
     print('开始打印买卖操作...')
@@ -172,60 +186,32 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
     '''    
     return profits
 
-def draw_klines(b_year : int, e_year : int, interval : kline_interval):
-    if e_year - b_year == 1:
-        UNIT = 'M'
-    else :
-        UNIT = 'Y'    
-    klines = data_loader.load_klines_years(trade_symbol.BTCUSDT, b_year, e_year, interval)
-    if klines:
-        print('共获取到K线数据记录={}'.format(len(klines)))
-        dates = [utility.timestamp_to_datetime(kline[0]) for kline in klines]
-        #把dates转换为numpy数组
-        dates = np.array(dates)
-        closed_prices = [float(kline[4]) for kline in klines]
-        draw.draw_kline(dates, closed_prices, XUnit=UNIT)
-    else:
-        print("Failed to fetch kline data.")
-    return
-
-def draw_kline_and_profit(b_year : int, e_year : int, interval : kline_interval):
-    if e_year - b_year == 1:
-        UNIT = 'M'
-    else :
-        UNIT = 'Y'
-    klines = data_loader.load_klines_years(trade_symbol.BTCUSDT, b_year, e_year, interval)
-    if klines:
-        print('共获取到K线数据记录={}'.format(len(klines)))
-        dates = [utility.timestamp_to_datetime(kline[0]) for kline in klines]
-        #把dates转换为numpy数组
-        dates = np.array(dates)
-        closed_prices = [float(kline[4]) for kline in klines]
-        profits = calc_MACD_daily_profit(b_year, e_year, interval)
-        draw.draw_kline_and_profile(dates, closed_prices, profits, XUnit=UNIT)
-    return
-
 def _test() :
     print("MACD history Start...")
-    str_now = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S') 
-    format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    #logging.basicConfig(level=logging.INFO, format=format, filename='log/{}_{}_{}H-{}.txt'.format(symbol, year, interval, str_now))
-    logging.basicConfig(level=logging.INFO, format=format, filename='log/MACD_history-{}.txt'.format(str_now))
-    logger = logging.getLogger('binance')
-    logger.setLevel(logging.INFO)
-    #把print输出到日志文件
-    tmp_out = sys.stdout
-    tmp_err = sys.stderr
+    LOG_FLAG = 1
+    if LOG_FLAG == 1 :
+        str_now = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S') 
+        format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        #logging.basicConfig(level=logging.INFO, format=format, filename='log/{}_{}_{}H-{}.txt'.format(symbol, year, interval, str_now))
+        logging.basicConfig(level=logging.INFO, format=format, filename='log/MACD_history-{}.txt'.format(str_now))
+        logger = logging.getLogger('binance')
+        logger.setLevel(logging.INFO)
+        #把print输出到日志文件
+        tmp_out = sys.stdout
+        tmp_err = sys.stderr
 
-    #sys.stdout = log_adapter.LoggerWriter(logger, logging.INFO)
-    #sys.stderr = log_adapter.LoggerWriter(logger, logging.ERROR)
+        sys.stdout = log_adapter.LoggerWriter(logger, logging.INFO)
+        sys.stderr = log_adapter.LoggerWriter(logger, logging.ERROR)
+    
 
     #calc_MACD_daily_profit(2017, 2025, kline_interval.d1)
     #draw_klines(2023, 2024, kline_interval.d1)
-    draw_kline_and_profit(2017, 2025, kline_interval.d1)
+    draw_profit.draw_kline_and_profit(2017, 2025, kline_interval.d1, calc_MACD_daily_profit)
+    #draw_kline_and_profit(2017, 2025, kline_interval.d1)
 
-    sys.stdout = tmp_out
-    sys.stderr = tmp_err
+    if LOG_FLAG == 1 :
+        sys.stdout = tmp_out
+        sys.stderr = tmp_err
     print("MACD history End.")    
     return
 

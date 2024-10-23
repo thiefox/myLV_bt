@@ -16,6 +16,11 @@ class trade_symbol(str, Enum):
     BTCUSDT = 'BTCUSDT'
     ETHUSDT = 'ETHUSDT'
 
+class TRADE_STATUS(Enum):
+    IGNORE = 0
+    BUY = 1
+    SELL = 2
+
 class MACD_CROSS(Enum):
     NONE = 0
     GOLD_ZERO_UP = 1    #0轴上金叉
@@ -24,6 +29,12 @@ class MACD_CROSS(Enum):
     DEAD_ZERO_DOWN = 4  #0轴下死叉
     TOP_DIVERGENCE = 5  #顶背离
     BOTTOM_DIVERGENCE = 6  #底背离
+    #判断是否金叉
+    def is_golden(self) -> bool:
+        return self == MACD_CROSS.GOLD_ZERO_UP or self == MACD_CROSS.DEAD_ZERO_DOWN
+    #判断是否死叉
+    def is_dead(self) -> bool:
+        return self == MACD_CROSS.GOLD_ZERO_DOWN or self == MACD_CROSS.DEAD_ZERO_UP
 
 
 DEFAULT_FEE = 0.001         #默认手续费

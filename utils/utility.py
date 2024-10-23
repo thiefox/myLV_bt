@@ -124,6 +124,8 @@ def timestamp_to_datetime(time_stamp : int) -> datetime:
 #币安int时间戳转换为字符串时间
 #字符串时间格式='2000-01-01 00:00:00'
 def timestamp_to_string(time_stamp : int, ONLY_DATE = False) -> str:
+    if not isinstance(time_stamp, int):
+        print('time_stamp={}, type={}'.format(time_stamp, type(time_stamp)))
     assert(isinstance(time_stamp, int))
     #print('input={}'.format(time_stamp/1000))
     time_array = time.localtime(float(time_stamp/1000))

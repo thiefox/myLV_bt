@@ -157,13 +157,16 @@ class prices_info():
     
     #计算MACD, 返回macd(快线/DIF), signal(慢线/DEA)和hist(MACD柱值)
     def calculate_macd(self) -> tuple:
+        assert(self.__prices is not None)
+        assert(len(self.__prices) > 0)
+        assert(isinstance(self.__prices[0], float))
         #DIF(macd)=差离值=快线
         #DEA(signal)=差离值平均数=慢线
         #第三个值macd_hist对应于macd的差值，即macd_hist=macd-signal。也即是所谓的红绿能量柱值。
         # /MACD
         # 金叉的意思就是快线（股票行情指标的短期线）向上穿越慢线（长期线）的交叉；死叉反之。通常情况下，金叉是买进信号，死叉为卖出信号。
         macd, signal, hist = getattr(talib, 'MACD')(np.array(self.__prices),  fastperiod=12, slowperiod=26, signalperiod=9)
-        print('共计算出MACD记录数={}'.format(len(macd)))
+        #print('共计算出MACD记录数={}'.format(len(macd)))
         '''
         print('开始打印MACD原始值...')
         for i in range(len(macd)):
