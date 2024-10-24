@@ -159,8 +159,8 @@ class MACD_processor():
                 pass
         if self.DAILY_LOG :
             #如当天发现交叉，则cash和hold为处理交叉后的数据
-            prices = {base_item.trade_symbol.BTCUSDT: closes[-1], }
-            profit = self.account.get_amount(self.symbol) * prices
+            #prices = {base_item.trade_symbol.BTCUSDT: closes[-1], }
+            profit = self.account.get_amount(self.symbol) * closes[-1]
             self.dailies.loc[len(self.dailies)] = [dates[-1], self.account.cash, self.account.get_amount(self.symbol), profit]
         return cross, status
     
@@ -191,46 +191,61 @@ def calc_profit(year_begin : int, year_end : int, interval : base_item.kline_int
         if result[0].is_golden() :
             print('重要：日期={}，第{}条K线发现金叉。'.format(dates[i], i))
             gold_cross.append(i)
-            operations.append(i, result[0], result[1])
+            operations.append((i, result[0], result[1]))
         elif result[0].is_dead():
             print('重要：日期={}，第{}条K线发现死叉。'.format(dates[i], i))
             dead_cross.append(i)
-            operations.append(i, result[0], result[1])
+            operations.append((i, result[0], result[1]))
         else :
             pass
 
-    last_price = klines[-1][4]
+    last_price = float(klines[-1][4])
     amount = processor.account.get_amount(symbol)
     if amount > 0 :
         print('重要：最后一天卖出操作，日期={}, 价格={}, 数量={:.4f}...'.format(dates[-1], last_price, amount))
         processor.sell_all(last_price)
-        operations.append(len(klines)-1)
+        operations.append((len(klines)-1), base_item.MACD_CROSS.NONE, base_item.TRADE_STATUS.SELL)
 
-    print('起始资金={}, 起始币数量={}, 起始币价格={:.2f}, 结束币价格={:.2f}'.format(INIT_CASH, 0, klines[0][4], last_price))
+    print('起始资金={}, 起始币数量={}, 起始币价格={:.2f}, 结束币价格={:.2f}'.format(INIT_CASH, 0, float(klines[0][4]), last_price))
     print('重要：MACD模式最终资金={}, 盈亏={}，收益率={:.2f}%'.format(account.cash, account.cash - INIT_CASH,
         fin_util.calc_scale(INIT_CASH, account.cash)*100))
 
     print('金叉出现次数={}, 金叉列表={}.'.format(len(gold_cross), ', '.join([str(x) for x in gold_cross])))
     print('死叉出现次数={}, 死叉列表={}.'.format(len(dead_cross), ', '.join([str(x) for x in dead_cross])))
-    '''
     print('开始打印买卖操作...')
-    BUY_OP = True
-    for index in range(0, len(operations)):
-        i = operations[index]
-        cur_account = accounts[i]
-        #date_str = datetime.strptime(dates[i], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
-        if BUY_OP:
-            print('金叉买入：i={}，日期={}，价格={}，数量={}，剩余资金={}. 总值={}.'.format(i, dates[i], closed_prices[i],
-                cur_account.get_amount(BTCUSDT), cur_account.cash, profits[i]))
-            BUY_OP = False
+    for op in operations:
+        date_str = datetime.strptime(dates[op[0]], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
+        daily = processor.dailies.loc[op[0]]
+        price = float(klines[op[0]][4])
+        if op[1].is_golden():
+            if op[2] == base_item.TRADE_STATUS.BUY:
+                print('重要：金叉买入，i={}，日期={}，价格={:.2f}，数量={}，资金={}，总值={:.2f}'.format(op[0], date_str, price,
+                    daily['hold'], daily['cash'], daily['profit']))
+            elif op[2] == base_item.TRADE_STATUS.IGNORE:
+                print('异常：金叉忽略，i={}，日期={}，价格={:.2f}，数量={}，资金={}，总值={:.2f}'.format(op[0], date_str, price,
+                    daily['hold'], daily['cash'], daily['profit']))
+            else :
+                print('异常：金叉操作错误，i={}，日期={}, 操作={}'.format(op[0], date_str, op[2]))
+                #assert(False)
+                pass
+        elif op[1].is_dead() :
+            if op[2] == base_item.TRADE_STATUS.SELL:
+                print('重要：死叉卖出，i={}，日期={}，价格={:.2f}，数量={}，资金={}，总值={:.2f}'.format(op[0], date_str, price,
+                    daily['hold'], daily['cash'], daily['profit']))
+            elif op[2] == base_item.TRADE_STATUS.IGNORE:
+                print('异常：死叉忽略，i={}，日期={}，价格={:.2f}，数量={}，资金={}，总值={:.2f}'.format(op[0], date_str, price,
+                    daily['hold'], daily['cash'], daily['profit']))
+            else :
+                print('异常：死叉操作错误，i={}，日期={}, 操作={}'.format(op[0], date_str, op[2]))
+                #assert(False)
+                pass
         else :
-            buy_i = operations[index-1]
-            profit = pi.calc_profit_scale(buy_i, i)
-            print('死叉卖出：i={}，日期={}，价格={}，数量={}，操作收益={:.2f}%. 剩余资金={}. 总值={}.'.format(i,
-                dates[i], closed_prices[i], accounts[i-1].get_amount(BTCUSDT), profit*100, accounts[i].cash, profits[i]))
-            BUY_OP = True
+            if op[2] == base_item.TRADE_STATUS.SELL:
+                print('重要：最后一天卖出，i={}，日期={}，价格={:.2f}，数量={}，资金={}，总值={:.2f}'.format(op[0], date_str, price,
+                    daily['hold'], daily['cash'], daily['profit']))
+            else :
+                assert(False)
     print('打印买卖操作结束.')
-    '''
 
     profits = list()
     if len(processor.dailies) > 0 :
@@ -248,14 +263,14 @@ def calc_profit(year_begin : int, year_end : int, interval : base_item.kline_int
                 print('异常：最大连续回撤区间不是降序排列！')
                 #pf.print(info[1], info[2])
 
-        holds = processor.dailies[MACD_processor.CN_HOLD].tolist()
+        holds = processor.dailies['hold'].tolist()
         info = fin_util.calc_hold_days(holds)
         print('MACD模式-总天数={}, 总持仓天数={}, 最长一次持仓天数={}'.format(len(klines), info[0], info[1]))
     return profits
 
 def _test() :
     print("MACD process Start...")
-    LOG_FLAG = 1
+    LOG_FLAG = 0
     if LOG_FLAG == 1:
         str_now = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S') 
         format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
