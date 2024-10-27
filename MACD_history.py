@@ -26,7 +26,7 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
     print('共载入的K线数据记录={}'.format(len(klines)))
     if len(klines) == 0:
         return list()
-    INIT_PRICE = round(float(klines[0][1]), 4)
+    INIT_PRICE = round(float(klines[0][1]), 2)  #以开盘价作为初始价格
     print('开始计算MACD模式的每日收益...')
     dates = [utility.timestamp_to_string(kline[0], ONLY_DATE=True) for kline in klines]
     #把dates转换为numpy数组
@@ -57,6 +57,8 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
     gold_ops = list()       #金叉操作
     dead_ops = list()       #死叉操作
     operations = list()     #操作记录
+    ig_gold = list()
+    ig_dead = list()
     for i in range(1, len(klines)):
         accounts[i] = copy.deepcopy(accounts[i-1])  #复制前一天的账户信息
         cur_account = accounts[i]
@@ -91,6 +93,7 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
                 else :
                     print('异常：日期={}, 金叉买入信号，已为持仓状态(资金={}，持币={})，放弃该金叉。'.format(date_str, 
                         cur_account.cash, cur_account.get_amount(BTCUSDT)))
+                    ig_gold.append(i)
             elif crossovers[index][1] == MACD_CROSS.DEAD_ZERO_UP or crossovers[index][1] == MACD_CROSS.DEAD_ZERO_DOWN:  #死叉
                 if cur_account.get_amount(BTCUSDT) > 0:
                     sell_price = closed_prices[i]
@@ -103,6 +106,7 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
                 else :
                     print('异常：日期={}, 死叉卖出信号，无持仓状态(资金={}，持币={})，放弃该死叉。'.format(date_str, cur_account.cash, 
                         cur_account.get_amount(BTCUSDT)))
+                    ig_dead.append(i)
         else :
             pass
             
@@ -124,11 +128,13 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
         profits[i] = accounts[i].total_asset(price_dict)
 
     print('起始资金={}, 起始币数量={}, 起始币价格={:.2f}, 结束币价格={:.2f}'.format(INIT_CASH, 0, INIT_PRICE, closed_prices[-1]))
-    print('重要：MACD模式最终资金={}, 盈亏={}，收益率={:.2f}%'.format(accounts[-1].cash, accounts[-1].cash-INIT_CASH),
-        fin_util.calc_scale(INIT_CASH, accounts[-1].cash)*100)
+    print('重要：MACD模式最终资金={}, 盈亏={}，收益率={:.2f}%'.format(accounts[-1].cash, accounts[-1].cash-INIT_CASH, \
+        fin_util.calc_scale(INIT_CASH, accounts[-1].cash)*100))
 
     print('金叉买入次数={}, 金叉买入列表={}.'.format(len(gold_ops), ', '.join([str(x) for x in gold_ops])))
+    print('金叉忽略次数={}, 金叉忽略列表={}.'.format(len(ig_gold), ', '.join([str(x) for x in ig_gold])))
     print('死叉卖出次数={}, 死叉卖出列表={}.'.format(len(dead_ops), ', '.join([str(x) for x in dead_ops])))
+    print('死叉忽略次数={}, 死叉忽略列表={}.'.format(len(ig_dead), ', '.join([str(x) for x in ig_dead])))
     print('开始打印买卖操作...')
     BUY_OP = True
     for index in range(0, len(operations)):

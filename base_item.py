@@ -1,3 +1,4 @@
+from __future__ import annotations
 from enum import Enum
 from typing import Dict
 
@@ -31,12 +32,20 @@ class MACD_CROSS(Enum):
     BOTTOM_DIVERGENCE = 6  #底背离
     #判断是否金叉
     def is_golden(self) -> bool:
-        return self == MACD_CROSS.GOLD_ZERO_UP or self == MACD_CROSS.DEAD_ZERO_DOWN
+        return self == MACD_CROSS.GOLD_ZERO_UP or self == MACD_CROSS.GOLD_ZERO_DOWN
     #判断是否死叉
     def is_dead(self) -> bool:
-        return self == MACD_CROSS.GOLD_ZERO_DOWN or self == MACD_CROSS.DEAD_ZERO_UP
-
-
+        return self == MACD_CROSS.DEAD_ZERO_DOWN or self == MACD_CROSS.DEAD_ZERO_UP
+    #判断两个交叉是否相反
+    def is_opposite(self, other : MACD_CROSS) -> bool:
+        opposite = False
+        if self.is_golden() :
+            opposite = other.is_dead()
+        else :
+            assert(self.is_dead())
+            opposite = other.is_golden()
+        return opposite
+  
 DEFAULT_FEE = 0.001         #默认手续费
 DEF_MIN_AMOUNT = 0.0001     #最小交易数量，如<1，则每次递减1位小数
 
@@ -55,7 +64,7 @@ class holding() :
         return self.__symbol
     @property
     def amount(self) -> float:
-        return self.__amount
+        return round(self.__amount, 4)
     
     #计算一次买入成本
     def calc_cost(price : float, amount : float, fee : float) -> float:

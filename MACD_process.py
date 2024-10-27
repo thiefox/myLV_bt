@@ -14,7 +14,8 @@ import fin_util
 import draw_profit
 
 class MACD_processor():
-    WINDOW_LENGTH = 100             #35
+    #WINDOW_LENGTH=0表示不限制K线数量
+    WINDOW_LENGTH = 200             #35/100
     SLOW_PERIOD = 26
     FAST_PERIOD = 12
     SIGNAL_PERIOD = 9
@@ -25,6 +26,7 @@ class MACD_processor():
         self.__symbol = symbol
         self.DAILY_LOG = False
         self.dailies = pd.DataFrame(columns=['date', 'cash', 'hold', 'profit'])
+        self.crosses = list()
         return
     @property
     def symbol(self) -> base_item.trade_symbol:
@@ -54,7 +56,7 @@ class MACD_processor():
         self.__klines.loc[index] = data_loader.get_kline_shape(kline)
         
         #保留最近的WINDOW_LENGTH条K线数据
-        if len(self.__klines) > self.WINDOW_LENGTH :
+        if self.WINDOW_LENGTH > 0 and len(self.__klines) > self.WINDOW_LENGTH :
             #self.__klines = self.__klines.iloc[-self.WINDOW_LENGTH:]
             #删除第一条K线
             self.__klines = self.__klines.drop(self.__klines.index[0])
@@ -151,18 +153,54 @@ class MACD_processor():
         if len(crossovers) > 0 :
             index = crossovers[-1][0]
             cross = crossovers[-1][1]
-            print('最新的MACD交叉点={}, 日期={}, index={}'.format(cross, dates[index], index))
+            oi = self.__klines.index[index]
+            if len(self.crosses) == 0 :
+                self.crosses.append((oi, cross))
+            else :
+                last_oi = self.crosses[-1][0]
+                last_cross = self.crosses[-1][1]
+                if oi > last_oi :
+                    if cross.is_opposite(last_cross) :  #交叉点相反
+                        self.crosses.append((oi, cross))
+                    else :
+                        print('异常：交叉点=({},{})和最后一个交叉点=({},{})相同类型.'.format(oi, cross, last_oi, last_cross))
+                elif oi == last_oi :
+                    pass
+                else :
+                    print('异常：交叉点=({},{})不是最新位置，最后一个有效交叉=({},{}).'.format(oi, cross, last_oi, last_cross))
             if index == len(closes) - 1 :        #最新的K线上有交叉
                 status = self.__process_cross(cross, index)
+                print('重要：出现新的MACD交叉点={}, 日期={}, index={}, 处理={}.'.format(cross, dates[index], index, status))
             else :
                 #assert(False)
+                cross = base_item.MACD_CROSS.NONE
                 pass
         if self.DAILY_LOG :
             #如当天发现交叉，则cash和hold为处理交叉后的数据
             #prices = {base_item.trade_symbol.BTCUSDT: closes[-1], }
-            profit = self.account.get_amount(self.symbol) * closes[-1]
+            profit = self.account.cash + self.account.get_amount(self.symbol) * closes[-1]
             self.dailies.loc[len(self.dailies)] = [dates[-1], self.account.cash, self.account.get_amount(self.symbol), profit]
         return cross, status
+    
+    def print_cross(self):
+        #获取self.crosses中的金叉列表和死叉列表
+        gold_cross = dict()
+        dead_cross = dict()
+        for cross in self.crosses:
+            index = cross[0]
+            cross_type = cross[1]
+            if cross_type.is_golden():
+                gold_cross[index] = cross_type
+            elif cross_type.is_dead():
+                dead_cross[index] = cross_type
+
+        print('所有金叉数量={}'.format(len(gold_cross)))
+        if len(gold_cross) > 0 :
+            print('金叉点列表={}'.format(', '.join([str(x) for x in gold_cross.keys()])))
+        print('所有死叉数量={}'.format(len(dead_cross)))
+        if len(dead_cross) > 0 :
+            print('死叉点列表={}'.format(', '.join([str(x) for x in dead_cross.keys()])))
+        return
     
 def calc_profit(year_begin : int, year_end : int, interval : base_item.kline_interval) -> list:
     INIT_CASH = 10000
@@ -183,17 +221,17 @@ def calc_profit(year_begin : int, year_end : int, interval : base_item.kline_int
     gold_cross = list()
     dead_cross = list()
     operations = list()     #操作记录
-
+    INIT_PRICE = round(float(klines[0][1]), 2)  #以开盘价作为初始价格
     for i in range(len(klines)):
-        print('处理第{}条K线数据，日期={}...'.format(i, dates[i]))
+        #print('处理第{}条K线数据，日期={}...'.format(i, dates[i]))
         kline = klines[i]
         result = processor.update_kline(kline)
         if result[0].is_golden() :
-            print('重要：日期={}，第{}条K线发现金叉。'.format(dates[i], i))
+            #print('重要：日期={}，第{}条K线发现金叉。'.format(dates[i], i))
             gold_cross.append(i)
             operations.append((i, result[0], result[1]))
         elif result[0].is_dead():
-            print('重要：日期={}，第{}条K线发现死叉。'.format(dates[i], i))
+            #print('重要：日期={}，第{}条K线发现死叉。'.format(dates[i], i))
             dead_cross.append(i)
             operations.append((i, result[0], result[1]))
         else :
@@ -206,10 +244,12 @@ def calc_profit(year_begin : int, year_end : int, interval : base_item.kline_int
         processor.sell_all(last_price)
         operations.append((len(klines)-1), base_item.MACD_CROSS.NONE, base_item.TRADE_STATUS.SELL)
 
-    print('起始资金={}, 起始币数量={}, 起始币价格={:.2f}, 结束币价格={:.2f}'.format(INIT_CASH, 0, float(klines[0][4]), last_price))
+    print('起始资金={}, 起始币数量={}, 起始币价格={:.2f}, 结束币价格={:.2f}'.format(INIT_CASH, 0, INIT_PRICE, last_price))
     print('重要：MACD模式最终资金={}, 盈亏={}，收益率={:.2f}%'.format(account.cash, account.cash - INIT_CASH,
         fin_util.calc_scale(INIT_CASH, account.cash)*100))
-
+    print('---processor处理器打印金叉死叉---...')
+    processor.print_cross()
+    print('---外部环境打印金叉死叉---...')
     print('金叉出现次数={}, 金叉列表={}.'.format(len(gold_cross), ', '.join([str(x) for x in gold_cross])))
     print('死叉出现次数={}, 死叉列表={}.'.format(len(dead_cross), ', '.join([str(x) for x in dead_cross])))
     print('开始打印买卖操作...')
@@ -270,7 +310,7 @@ def calc_profit(year_begin : int, year_end : int, interval : base_item.kline_int
 
 def _test() :
     print("MACD process Start...")
-    LOG_FLAG = 0
+    LOG_FLAG = 1
     if LOG_FLAG == 1:
         str_now = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S') 
         format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
