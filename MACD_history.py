@@ -154,13 +154,17 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
     print('打印买卖操作结束.')
     pf = fin_util.prices_info(profits)
     info = pf.find_max_trend(INCREMENT=False)
-    if info[0] > 0:
-        #begin_str = datetime.strptime(dates[info[1]], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
-        #end_str = datetime.strptime(dates[info[2]-1], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
-        print('MACD最大连续回撤={:.2f}%, bi={}, ei={}'.format(info[0]*100, dates[info[1]], dates[info[2]-1]))
-        before = profits[info[1]-1]
-        after = profits[info[2]]
-        print('MACD模式最大连续回撤的前一天={}, 后一天={}, 回撤={}'.format(before, after, after-before))
+    if info[1] >= 0 and info[2] > info[1]:
+        print('MACD最大连续回撤={:.2f}%, 开始日期={}, 结束日期={}'.format(info[0]*100, dates[info[1]], dates[info[2]-1]))        
+        bp = pf.get(info[1])
+        ep = pf.get(info[2]-1)
+        print('回撤明细1：开始价格={}, 结束价格={}, 回撤={}'.format(bp, ep, ep-bp))
+        bp = profits[info[1]]
+        ep = profits[info[2]-1]
+        print('回撤明细2：开始价格={}, 结束价格={}, 回撤={}'.format(bp, ep, round(ep-bp, 2)))
+        bp = profits[info[1]-1]
+        ep = profits[info[2]]
+        print('MACD模式最大连续回撤的前一天={}, 后一天={}, 差值={}'.format(bp, ep, round(ep-bp, 2)))
         if not pf.check_order(info[1], info[2], ASCENDING=False):
             print('异常：最大连续回撤区间不是降序排列！')
             #pf.print(info[1], info[2])
@@ -172,15 +176,18 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
     #开始计算起始买币，最终卖币收益
     amount = INIT_CASH/INIT_PRICE
     cash = round(amount * closed_prices[-1] * (1 - FEE), 2)
-    print('持仓模式最终资金={}, 最终收益={}'.format(cash, cash-INIT_CASH))        
+
+    print('重要：持仓模式最终资金={}, 盈亏={}，收益率={:.2f}%'.format(cash, cash-INIT_CASH, fin_util.calc_scale(INIT_CASH, cash)*100))
+
     info = pi.find_max_trend(INCREMENT=False)
-    if info[0] > 0:
-        #begin_str = datetime.strptime(dates[info[1]], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
-        #end_str = datetime.strptime(dates[info[2]-1], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
-        print('持仓模式最大连续回撤={:.2f}%, bi={}, ei={}'.format(info[0]*100, dates[info[1]], dates[info[2]-1]))
-        before = pi.get(info[1]-1)
-        after = pi.get(info[2])
-        print('持仓模式最大连续回撤的前一天={}, 后一天={}, 回撤={}'.format(before, after, after-before))
+    if info[1] >= 0 and info[2] > info[1]:
+        print('持仓模式最大连续回撤={:.2f}%, 开始日期={}, 结束日期={}'.format(info[0]*100, dates[info[1]], dates[info[2]-1]))
+        bp = pi.get(info[1])
+        ep = pi.get(info[2]-1)
+        print('回撤明细1：开始价格={}, 结束价格={}, 回撤={}'.format(bp, ep, round(ep-bp, 2)))
+        bp = pi.get(info[1]-1)
+        ep = pi.get(info[2])
+        print('持仓模式最大连续回撤的前一天={}, 后一天={}, 差值={}'.format(bp, ep, round(ep-bp, 2)))
         if not pi.check_order(info[1], info[2], ASCENDING=False):
             print('异常：最大连续回撤区间不是降序排列！')
             #pi.print(info[1], info[2])

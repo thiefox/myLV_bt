@@ -15,7 +15,8 @@ import draw_profit
 
 class MACD_processor():
     #WINDOW_LENGTH=0表示不限制K线数量
-    WINDOW_LENGTH = 200             #35/100
+    #114天结果和无限一样，114为最小临界窗口
+    WINDOW_LENGTH = 120
     SLOW_PERIOD = 26
     FAST_PERIOD = 12
     SIGNAL_PERIOD = 9
@@ -214,7 +215,7 @@ def calc_profit(year_begin : int, year_end : int, interval : base_item.kline_int
     print('共载入的K线数据记录={}'.format(len(klines)))
     if len(klines) == 0:
         return list()
-    dates = [utility.timestamp_to_string(kline[0]) for kline in klines]
+    dates = [utility.timestamp_to_string(kline[0], ONLY_DATE=True) for kline in klines]
     #把dates转换为numpy数组
     dates = np.array(dates)
     
@@ -254,7 +255,8 @@ def calc_profit(year_begin : int, year_end : int, interval : base_item.kline_int
     print('死叉出现次数={}, 死叉列表={}.'.format(len(dead_cross), ', '.join([str(x) for x in dead_cross])))
     print('开始打印买卖操作...')
     for op in operations:
-        date_str = datetime.strptime(dates[op[0]], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
+        #date_str = datetime.strptime(dates[op[0]], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
+        date_str = dates[op[0]]
         daily = processor.dailies.loc[op[0]]
         price = float(klines[op[0]][4])
         if op[1].is_golden():
@@ -292,16 +294,19 @@ def calc_profit(year_begin : int, year_end : int, interval : base_item.kline_int
         profits = processor.dailies['profit'].tolist()
         pf = fin_util.prices_info(profits)
         info = pf.find_max_trend(INCREMENT=False)
-        if info[0] > 0:
-            begin_str = datetime.strptime(dates[info[1]], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
-            end_str = datetime.strptime(dates[info[2]-1], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
+        print('统计最大连续回撤返回={:.2f}%, bi={}, ei={}'.format(info[0]*100, info[1], info[2]-1))
+        if info[1] >= 0 and info[2] > info[1]:
+            begin_str = dates[info[1]]
+            end_str = dates[info[2]-1]
             print('MACD最大连续回撤={:.2f}%, bi={}, ei={}'.format(info[0]*100, begin_str, end_str))
-            before = profits[info[1]-1]
-            after = profits[info[2]]
+            before = round(profits[info[1]-1], 2)
+            after = round(profits[info[2]], 2)
             print('MACD模式最大连续回撤的前一天={}, 后一天={}, 回撤={}'.format(before, after, after-before))
             if not pf.check_order(info[1], info[2], ASCENDING=False):
                 print('异常：最大连续回撤区间不是降序排列！')
                 #pf.print(info[1], info[2])
+        else :
+            print('异常：未取到最大回撤，统计周期={}。'.format(len(profits)))
 
         holds = processor.dailies['hold'].tolist()
         info = fin_util.calc_hold_days(holds)

@@ -1,6 +1,8 @@
 from __future__ import annotations
+import copy
 from enum import Enum
 from typing import Dict
+from threading import Lock
 
 import math
 from datetime import datetime
@@ -114,7 +116,19 @@ class part_account() :
         self.__part_name = part_name
         self.__cash = float(0)         #该分境的现金
         self.__holdings = dict[str, holding]()      #该分境的持仓数据
+        self.__lock = Lock()
         return
+ 
+    def __deepcopy__(self, memo):
+        new_obj = type(self)(self.__part_id, self.__part_name)
+        memo[id(self)] = new_obj
+        #new_obj.__part_id = self.__part_id
+        #new_obj.__part_name = self.__part_name
+        new_obj.__cash = self.__cash
+        new_obj.__holdings = copy.deepcopy(self.__holdings, memo)
+        #new_obj.__lock = Lock()
+        return new_obj
+
     @property
     def part_id(self) -> str:
         return self.__part_id
@@ -161,8 +175,9 @@ class part_account() :
             self.__holdings[symbol] = hold
 
         cur_cost = holding.calc_cost(price, amount, fee)
-        hold._buy(amount, cur_cost, day)
-        self.__cash = round(self.__cash - cur_cost, 2)
+        with self.__lock :
+            hold._buy(amount, cur_cost, day)
+            self.__cash = round(self.__cash - cur_cost, 2)
         return
     #买入
     def buy(self, symbol : trade_symbol, amount : float, price : float, day = '', fee = DEFAULT_FEE) -> bool :
@@ -195,8 +210,9 @@ class part_account() :
         if hold is None :
             return
         cur_cost = holding.calc_income(price, amount, fee)
-        hold._sell(amount, cur_cost)
-        self.__cash = round(self.__cash + cur_cost, 2)
+        with self.__lock :
+            hold._sell(amount, cur_cost)
+            self.__cash = round(self.__cash + cur_cost, 2)
         return
     #卖出
     def sell(self, symbol : trade_symbol, amount : float, price : float, fee = DEFAULT_FEE) -> bool :

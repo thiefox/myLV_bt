@@ -69,7 +69,7 @@ class prices_info():
         self.__prices = Series(prices)
         return
     def get(self, index : int) -> float:
-        return self.__prices[index]
+        return round(self.__prices[index], 2)
     #检查一个区间内价格有序性, 默认为升序
     def check_order(self, BEGIN : int = 0, END : int = -1, ASCENDING = True) -> bool:
         ordered = False
@@ -154,7 +154,6 @@ class prices_info():
             max = [0, -1, -1]
         return max[0], max[1], max[2]
 
-    
     #计算MACD, 返回macd(快线/DIF), signal(慢线/DEA)和hist(MACD柱值)
     def calculate_macd(self) -> tuple:
         assert(self.__prices is not None)
