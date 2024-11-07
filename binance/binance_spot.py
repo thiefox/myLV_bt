@@ -21,10 +21,19 @@ class OrderStatus(Enum):
 
 
 class OrderType(Enum):
-    LIMIT = "LIMIT"
-    MARKET = "MARKET"
-    STOP = "STOP"
-
+    LIMIT = "LIMIT"     #限价单，要求的参数timeInForce, quantity, price。限价单重点在于按客户预设的价格进行操作	
+    MARKET = "MARKET"   #市价单，要求的参数quantity。市价单重点在于立即以当前市场价格完成买卖交易，重点在于尽快完成。
+    #止损单，要求的参数quantity, stopPrice, trailingDelta。止损单重点在于当市场价格达到预设的价格时，按照预设的价格进行操作。
+    #当条件满足后会下market单，所以不需要price参数。
+    #STOP = "STOP"       
+    #从文档里查到还有这些，但没有上面的STOP类型
+    STOP_LOSS = 'STOP_LOSS'                 #止损市价单，强调到达预设价格后按市价单进行操作（卖出），重点在于尽快完成，不保证价格。
+    STOP_LOSS_LIMIT = 'STOP_LOSS_LIMIT'     #限价止损单，强调到达预设价格后按限价单进行操作，重点在于按照预设价格进行操作。
+    TAKE_PROFIT = 'TAKE_PROFIT'             #止盈市价单，强调到达预设价格后按市价单进行操作（卖出），重点在于尽快完成，不保证价格。
+    TAKE_PROFIT_LIMIT = 'TAKE_PROFIT_LIMIT' #限价止盈单，强调到达预设价格后按限价单进行操作，重点在于按照预设价格进行操作。
+    #限价做市单，强调按照预设价格进行操作，不接受市价单，重点在于按照预设价格进行操作。
+    #一种订单形式, 其订单会保证成为做市订单(MAKER), 不会立刻成交进而成为TAKER。
+    LIMIT_MAKER = "LIMIT_MAKER"
 
 class RequestMethod(Enum):
     """
@@ -35,6 +44,14 @@ class RequestMethod(Enum):
     PUT = 'PUT'
     DELETE = 'DELETE'
 
+
+class timeInForce(Enum):
+    """
+    订单的有效期.
+    """
+    GTC = 'GTC'  # Good till Canceled。 成交为止。订单会一直有效，直到被成交或者取消。taker/maker
+    IOC = 'IOC'  # Immediate Or Cancel，无法立即成交的部分就撤销。订单在失效前会尽量多的成交。taker
+    FOK = 'FOK'  # Fill Or Kill，无法全部立即成交就撤销。如果无法全部成交，订单会失效。即要么全部成交，要么全部不成交。
 
 class Interval(Enum):
     """
@@ -85,7 +102,7 @@ class BinanceSpotHttp(object):
 
         return None
 
-    def build_parameters(self, params: dict) -> str:
+    def build_parameters(params: dict) -> str:
         keys = list(params.keys())
         keys.sort()
         return '&'.join([f"{key}={params[key]}" for key in params.keys()])
@@ -97,9 +114,9 @@ class BinanceSpotHttp(object):
             query_str = self._sign(requery_dict)
             url += '?' + query_str
         elif requery_dict:
-            url += '?' + self.build_parameters(requery_dict)
+            url += '?' + BinanceSpotHttp.build_parameters(requery_dict)
         headers = {"X-MBX-APIKEY": self.api_key}
-
+        print('url={}'.format(url))
         for i in range(0, self.try_counts):
             try:
                 response = requests.request(req_method.value, url=url, headers=headers, timeout=self.timeout, proxies=self.proxies)
@@ -116,7 +133,7 @@ class BinanceSpotHttp(object):
         return self.request(req_method=RequestMethod.GET, path=path)
 
     def get_exchange_info(self):
-
+        # 获取交易规则和交易对信息
         """
         return:
          the exchange info in json format:
@@ -133,16 +150,18 @@ class BinanceSpotHttp(object):
          {'limit': 200, 'filterType': 'MAX_NUM_ORDERS'},
          {'multiplierDown': '0.8500', 'multiplierUp': '1.1500', 'multiplierDecimal': '4', 'filterType': 'PERCENT_PRICE'}],
          'orderTypes': ['LIMIT', 'MARKET', 'STOP'], 'timeInForce': ['GTC', 'IOC', 'FOK', 'GTX']}]}
-
         """
-        # 获取交易规则和交易对
         path = '/api/v3/exchangeInfo'
-        return self.request(req_method=RequestMethod.GET, path=path)
+        query_dict = {'symbol': 'BTCUSDT',
+                      'showPermissionSets': 'false'}
+        return self.request(RequestMethod.GET, path, query_dict)
 
     def get_order_book(self, symbol, limit=5):
+        # 获取交易深度，当前的买盘价和卖盘价
         """
         :param symbol: BTCUSDT, BNBUSDT ect, 交易对.
         :param limit: market depth.
+        #bidPrice: 买一价(最高买价), bidQty: 买一量, askPrice: 卖一价(最低卖价), askQty: 卖一量
         :return: return order_book in json 返回订单簿，json数据格式.
         """
         limits = [5, 10, 20, 50, 100, 500, 1000]
@@ -188,7 +207,7 @@ class BinanceSpotHttp(object):
 
     def get_latest_price(self, symbol):
         """
-        :param symbol: 获取最新的价格.
+        :param symbol: 获取最新的价格. 一般用于OVERVIEW多个交易对的价格.
         :return: {'symbol': 'BTCUSDT', 'price': '9168.90000000'}
 
         """
@@ -210,7 +229,8 @@ class BinanceSpotHttp(object):
         query_dict = {"symbol": symbol}
         return self.request(RequestMethod.GET, path, query_dict)
 
-    def get_client_order_id(self) -> str:
+    #本地函数，生成一个订单ID
+    def gen_client_order_id(self) -> str:
         """
         generate the client_order_id for user.
         :return:
@@ -219,6 +239,7 @@ class BinanceSpotHttp(object):
             self.order_count += 1
             return "x-A6SIDXVS" + str(self.get_current_timestamp()) + str(self.order_count)
 
+    #本地函数，获取系统时间
     def get_current_timestamp(self) -> int:
         """
         获取系统的时间.
@@ -235,17 +256,17 @@ class BinanceSpotHttp(object):
         else:
             return hmac_hashing(self.api_secret, query_str)
 
-    def _sign(self, params) -> str:
+    def _sign(self, params : dict) -> str:
         """
         签名的方法， signature for the private request.
         :param params: request parameters
         :return:
         """
-        query_string = self.build_parameters(params)
+        query_string = BinanceSpotHttp.build_parameters(params)
         return query_string + '&signature=' + str(self._get_sign(query_string))
  
     def place_order(self, symbol: str, order_side: OrderSide, order_type: OrderType, quantity: float, price: float,
-                    client_order_id: str = None, time_inforce="GTC", stop_price=0) -> dict:
+                    client_order_id: str = None, time_inforce=timeInForce.GTC, stop_price=0) -> dict:
         """
 
         :param symbol: 交易对名称
@@ -262,7 +283,7 @@ class BinanceSpotHttp(object):
         path = '/api/v3/order'
 
         if client_order_id is None:
-            client_order_id = self.get_client_order_id()
+            client_order_id = self.gen_client_order_id()
 
         params = {
             "symbol": symbol,
@@ -276,13 +297,16 @@ class BinanceSpotHttp(object):
         }
 
         if order_type == OrderType.LIMIT:
-            params['timeInForce'] = time_inforce
-
-        if order_type == OrderType.MARKET:
-            if params.get('price'):
+            #检查强制要求的参数
+            params['timeInForce'] = time_inforce.value
+            assert('quantity' in params)
+            assert('price' in params)
+        elif order_type == OrderType.MARKET:            #市价单不需要price参数
+            if 'price' in params:
                 del params['price']
-
-        if order_type == OrderType.STOP:
+            assert('price' not in params)
+            assert('quantity' in params)
+        elif order_type == OrderType.STOP_LOSS or order_type == OrderType.STOP_LOSS_LIMIT:
             if stop_price > 0:
                 params["stopPrice"] = stop_price
             else:
@@ -303,17 +327,19 @@ class BinanceSpotHttp(object):
 
         return self.request(RequestMethod.GET, path, prams, verify=True)
 
-    def cancel_order(self, symbol, client_order_id) -> dict:
+    def cancel_order(self, symbol : str, client_order_id : str) -> dict:
         """
         撤销订单.
         :param symbol:
         :param client_order_id:
         :return:
         """
+        'origClientOrderId和orderId至少要有一个'
         path = "/api/v3/order"
         params = {"symbol": symbol, "timestamp": self.get_current_timestamp(),
                   "origClientOrderId": client_order_id
                   }
+        assert('origClientOrderId' in params or 'orderId' in params)
         # 为什么要重试3次？
         for i in range(0, 3):
             try:
@@ -321,11 +347,11 @@ class BinanceSpotHttp(object):
                 return order
             except Exception as error:
                 print(f'cancel order error:{error}')
-        return
+        return None
 
     def get_open_orders(self, symbol=None):
         """
-        获取所有的订单.
+        获取用户所有开放中的订单.
         :param symbol: BNBUSDT, or BTCUSDT etc.
         :return:
         """
