@@ -104,24 +104,12 @@ def dingding_info(token: str, prompt: str, symbol: str, content: str):
     requests.post(api_url, json.dumps(json_text), headers=headers).content
     return
 
-#生成K线数据文件名
-#中间目录结构不存在则创建
-def gen_kline_file_name(symbol : str, year: int, month: int, interval : str) -> str:
-    base_dir = os.path.join(os.getcwd(), 'data\\{}\\kline'.format(symbol))
-    year_dir = os.path.join(base_dir, str(year))
-    month_str = str(month).zfill(2)
-    month_dir = os.path.join(year_dir, month_str)
-    os.makedirs(month_dir, exist_ok=True)
-    file_name = '{}-{}-{}.json'.format(year, month_str, interval)
-    file_name = os.path.join(month_dir, file_name)
-    return file_name
-
-#int时间戳转换为datetime时间
+#币安int时间戳（毫秒）转换为datetime
 def timestamp_to_datetime(time_stamp : int) -> datetime:
     #print('input={}'.format(time_stamp/1000))
     return datetime.fromtimestamp(float(time_stamp/1000))
 
-#币安int时间戳转换为字符串时间
+#币安int时间戳（毫秒）转换为字符串时间
 #字符串时间格式='2000-01-01 00:00:00'
 def timestamp_to_string(time_stamp : int, ONLY_DATE = False) -> str:
     if not isinstance(time_stamp, int):
@@ -135,7 +123,7 @@ def timestamp_to_string(time_stamp : int, ONLY_DATE = False) -> str:
         str_date = time.strftime("%Y-%m-%d %H:%M:%S", time_array)
     return str_date
 
-#字符串时间转换为币安int时间戳
+#字符串时间转换为币安int时间戳（毫秒）
 #字符串时间格式='2000-01-01 00:00:00'
 def string_to_timestamp(str_date : str, ONLY_DATE = False) -> int:
     #print('input={}'.format(str_date))
@@ -146,6 +134,20 @@ def string_to_timestamp(str_date : str, ONLY_DATE = False) -> int:
     time_stamp = int(time.mktime(time_array) * 1000)
     return time_stamp
 
+#获取一年的天数
+def days_in_year(year : int) -> int:
+    #是否闰年
+    def is_leap_year(year : int) -> bool:
+        return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+    return 366 if is_leap_year(year) else 365
 
-
-
+#获取一个月的天数
+def days_in_month(year : int, month : int) -> int:
+    #是否闰年
+    def is_leap_year(year : int) -> bool:
+        return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+    #每月天数
+    month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    if month == 2 and is_leap_year(year):
+        return 29
+    return month_days[month - 1]

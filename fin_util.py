@@ -1,9 +1,22 @@
+import os
 import numpy as np
 import talib
 import copy
 from pandas import DataFrame, Series
+from datetime import datetime
 
 import base_item
+
+def get_kline_file_name(symbol : base_item.trade_symbol, su : base_item.save_unit, dt : datetime) -> str:
+    base_dir = '{}\\data\\{}\\kline\\{}'.format(os.getcwd(), symbol.value, su.interval.value)
+    last_dir = su.get_save_dir(dt)
+    base_dir = '{}\\{}'.format(base_dir, last_dir)
+    #print('base_dir={}'.format(base_dir))
+    os.makedirs(base_dir, exist_ok=True)
+    file_name = su.get_save_file(dt)
+    file_name = '{}\\{}'.format(base_dir, file_name)
+    #print('file_name={}'.format(file_name))
+    return file_name
 
 #计算MACD交叉点, macd即为快线(DIF)，signal即为慢线(DEA)
 def find_macd_crossovers(macd : list, signal : list, hist : list) -> list:
@@ -175,6 +188,17 @@ class prices_info():
         print('打印MACD原始值结束.')
         '''
         return macd, signal, hist
+    
+# 检查K线列表的时间连续性
+# dates为币安K线数据的时间戳列表
+def check_time_continuity(dates: list, inter : base_item.kline_interval) -> bool:
+    if len(dates) < 2:
+        return True
+    for i in range(1, len(dates)):
+        if (dates[i] - dates[i-1])/1000 != inter.get_interval_seconds():
+            print('异常：时间戳{}和{}之间的时间间隔不是{}秒'.format(dates[i-1], dates[i], inter.get_interval_seconds()))
+            return False
+    return True
     
 def test() :
     data = [1, 5, 100, 85, 78, 84, 56, 27, 63, 14]

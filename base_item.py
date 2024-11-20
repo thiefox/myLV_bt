@@ -5,15 +5,164 @@ from typing import Dict
 from threading import Lock
 
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
+from utils import utility
 
 # K线周期枚举
 class kline_interval(str, Enum):
+    m3 = '3m'
     h1 = '1h'
     h4 = '4h'
     h6 = '6h'
     h12 = '12h'
     d1 = '1d'
+    #获取周期数，秒为单位
+    def get_interval_seconds(self) -> int:
+        interval = 0
+        if self == kline_interval.m3:
+            interval = 60 * 3
+        elif self == kline_interval.h1:
+            interval = 3600 * 1
+        elif self == kline_interval.h4:
+            interval = 3600 * 4
+        elif self == kline_interval.h6:
+            interval = 3600 * 6
+        elif self == kline_interval.h12:
+            interval = 3600 * 12
+        elif self == kline_interval.d1:
+            interval = 3600 * 24
+        return interval
+    #获取周期内时间差，即同周期的结束时间-开始时间
+    def get_delta(self) -> timedelta:
+        interval = int(self.value[:-1])
+        unit = self.value[-1]
+        if unit == 'm':
+            delta = timedelta(minutes=interval)
+        elif unit == 'h':
+            delta = timedelta(hours=interval)
+        elif unit == 'd':
+            delta = timedelta(days=interval)
+        else :
+            delta = timedelta()
+        return delta
+    #判断某条币安K线是否已封闭
+    #begin: 开始时间戳，毫秒级
+    #end: 结束时间戳，毫秒级
+    #返回=0，未封闭。返回>0，封闭的秒数。返回<0，异常。
+    def is_closed(self, begin : int, end : int) -> int:
+        if end <= begin :
+            return -1
+        delta = self.get_delta()
+        if delta.total_seconds() == 0 :
+            return -2
+        diff = (end + 1 - begin) - (delta.total_seconds()*1000)
+        if diff == 0 :
+            return delta.total_seconds()
+        elif diff < 0 :     #未封闭
+            return 0
+        else :              #终止和起始时间差超出阈值，异常
+            return -3
+    def get_unit(self) -> str:
+        return self.value[-1]
+
+#保存单元
+class save_unit() : 
+    def __init__(self, interval : kline_interval, multiple : int = 0) :
+        self.__inter = interval
+        self.__multi = multiple
+        self.begin = 0              #单元开始的时间，毫秒级。在__multi>0时需要设置
+        return
+    @property
+    def interval(self) -> kline_interval:
+        return self.__inter
+    @property
+    def multiple(self) -> int:
+        return self.__multi
+    def get_unit_seconds(self, dt : datetime) -> int:
+        OMS = 60        #1分钟秒数
+        seconds = 0
+        UNIT = self.interval.get_unit()
+        if UNIT == 'm':     #分钟K线
+            if self.multiple == 0 :
+                seconds = OMS * 60      #默认保存单位为1小时
+            else :
+                seconds = OMS * self.multiple
+        elif UNIT == 'h':   #小时K线
+            if self.multiple == 0 :
+                seconds = OMS * 60 * 24      #默认保存单位为1天
+            else :
+                seconds = OMS * 60 * self.multiple
+        elif UNIT == 'd':   #日K线
+            if self.multiple == 0 :
+                seconds = OMS * 60 * 24 * utility.days_in_month(dt.year, dt.month)      #默认保存单位为1月
+            else :
+                seconds = OMS * 60 * 24 * self.multiple
+        return seconds
+    #获取保存周期的（理论）开始时间戳，毫秒级
+    #实际的数据不一定从这个时间开始，如第一条数据可能是2017-08-17 04:00:00
+    #pos: 当前位置时间戳，毫秒级
+    def get_default_begin(self, pos : int) -> int:
+        begin = 0
+        pos_t = utility.timestamp_to_datetime(pos)
+        UNIT = self.interval.get_unit()
+        if UNIT == 'm':
+            begin = utility.string_to_timestamp(pos_t.strftime("%Y-%m-%d %H:00:00"))
+        elif UNIT == 'h':
+            begin = utility.string_to_timestamp(pos_t.strftime("%Y-%m-%d 00:00:00"))
+        elif UNIT == 'd':
+            begin = utility.string_to_timestamp(pos_t.strftime("%Y-%m-01 00:00:00"))
+        return begin
+    #判断是否同一保存周期（同一数据文件）
+    #base: 基准时间戳，毫秒级（注：base不一定为周期的开始）
+    #check: 待检查时间戳，毫秒级
+    def is_same_unit(self, base : int, check : int) -> bool:
+        if self.multiple > 0 :
+            begin = self.begin
+        else :
+            begin = self.get_default_begin(base)
+        if begin == 0 :
+            assert(False)
+            return False
+        assert(check >= begin)
+        if check < begin :
+            return False
+        win = self.get_unit_seconds(begin) * 1000
+        diff = win - (check - begin)
+        print('重要：base={}, begin={}, check={}, WIN={}, diff={}'.format(base, begin, check, win, diff))
+        return diff >= 0
+    #获取保存的末级目录单位
+    def get_save_dir(self, begin : datetime) -> str :
+        dir = ''
+        UNIT = self.interval.get_unit()
+        if UNIT == 'm':     #分钟K线，末级目录为天
+            dir = '{}\\{:0>2}\\{:0>2}'.format(begin.year, begin.month, begin.day)
+        elif UNIT == 'h':   #小时K线，末级目录为月
+            dir = '{}\\{:0>2}'.format(begin.year, begin.month)
+        elif UNIT == 'd':   #日K线，末级目录为年
+            dir = '{}'.format(begin.year)
+        return dir
+    #获取保存的文件名
+    def get_save_file(self, begin : datetime) -> str :
+        file = ''
+        UNIT = self.interval.get_unit()
+        if UNIT == 'm':
+            if self.multiple == 0 :
+                file = '{}-{:0>2}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day, begin.hour, self.interval.value)
+            else :
+                file = '{}-{:0>2}-{:0>2}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day,
+                    begin.hour, begin.min, self.interval.value)
+        elif UNIT == 'h':
+            if self.multiple == 0 :
+                file = '{}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day, self.interval.value)
+            else :
+                file = '{}-{:0>2}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day, begin.hour, self.interval.value)
+        elif UNIT == 'd':
+            if self.multiple == 0 :
+                file = '{}-{:0>2}-{}.json'.format(begin.year, begin.month, self.interval.value)
+            else :
+                file = '{}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day, self.interval.value)
+        return file    
+            
 
 class trade_symbol(str, Enum):
     BTCUSDT = 'BTCUSDT'

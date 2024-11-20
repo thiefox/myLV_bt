@@ -11,9 +11,11 @@ import requests
 import json
 import time
 import logging
+from datetime import datetime
 
 from utils import config
 from utils import utility
+from utils import log_adapter
 from enum import Enum
 from collections import deque
 import os
@@ -245,6 +247,7 @@ class BinanceMonitor_EX(object):
         self.try_counts = try_counts  # 失败尝试的次数.
         self.reconnect_count = 0      # reconnect counter
         self.streams = streams      # 订阅的交易K线列表，见配置文件
+        self.ws_connected = False
         return
 
     def get_ws_client(self) -> websocket.WebSocketApp:
@@ -267,28 +270,37 @@ class BinanceMonitor_EX(object):
     def on_message(self, ws, message):
         data = json.loads(message)
         if 'stream' in data:
-            print('收到stream类型消息, 数据={}...'.format(data))
-            '''
+            name = str(data['stream'])
             # K线消息
-            if data['data']['e'] == 'kline':
-                print('收到K线消息...')
+            if name.upper().find('BTCUSDT@KLINE') >= 0:
+                begin_time = utility.timestamp_to_string(data['data']['k']['t'])
+                end_time = utility.timestamp_to_string(data['data']['k']['T'])
+                begin_price = round(float(data['data']['k']['o']), 2)
+                end_price = round(float(data['data']['k']['c']), 2)
+                high_price = round(float(data['data']['k']['h']), 2)
+                low_price = round(float(data['data']['k']['l']), 2)
+                interval = data['data']['k']['i']
+                finished = data['data']['k']['x']
+                print('收到K线{}消息（间隔={}，结束={}），开始时间={}，结束时间={}，开始价={}，结束（最后）价={}，最高价={}，最低价={}...'.format(name,
+                    interval, finished, begin_time, end_time, begin_price, end_price, high_price, low_price))
                 #self.handle_kline(data['stream'],data['data'])
             # 买一卖一价消息
-            if data['data']['e'] == "bookTicker":
+            #elif data['data']['e'] == "bookTicker":
+            elif name.upper() == 'BTCUSDT@BOOKTICKER':
                 print('收到买一卖一价消息...')
-                bid_price = float(data['data']['b'])
-                ask_price = float(data['data']['a'])
-                print(f"{data['data']['s']} bid_price = {bid_price}, ask_price = {ask_price}")
+                bid_price = round(float(data['data']['b']), 2)
+                ask_price = round(float(data['data']['a']), 2)
+                print('当前买一价={:.2f}, 卖一价={:.2f}'.format(bid_price, ask_price))
             else :
-                print('收到其他消息...')
-                print(data)
-            '''
+                print('重要：收到其他stream消息，数据={}'.format(data))
         else:
-            print('收到非stream类型消息...')
-            print(data)
+            print('重要：收到非stream类型消息，数据={}'.format(data))
             
     def on_error(self, ws, error):
         print('收到错误消息...')
+        if type(error).__name__ == 'KeyboardInterrupt':
+            print('收到键盘中断异常, conn={}...'.format(self.ws_connected))
+            return
         print(type(error))
         print(error)
         logging.info(type(error))
@@ -299,15 +311,16 @@ class BinanceMonitor_EX(object):
             time.sleep(5)
             self.run()
 
-
-    def on_close(self, ws):
+    def on_close(self, ws, *args, **kwargs):
         print("Websocket connection closed")
+        self.ws_connected = False
 
     def run(self):
         # kwebsocket.enableTrace(True)
         self.ws_client = self.get_ws_client() 
         try:
-            self.ws_client.run_forever()
+            if self.ws_client.run_forever() :
+                self.ws_connected = True
         except KeyboardInterrupt:
             print("收到键盘中断异常...")
             self.ws_client.close()
@@ -317,6 +330,22 @@ class BinanceMonitor_EX(object):
         return
 
 def test():
+    print("MACD monitor_EX Start...")
+    LOG_FLAG = 0
+    if LOG_FLAG == 1:
+        str_now = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S') 
+        format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        #logging.basicConfig(level=logging.INFO, format=format, filename='log/{}_{}_{}H-{}.txt'.format(symbol, year, interval, str_now))
+        logging.basicConfig(level=logging.INFO, format=format, filename='log/monitor_EX-{}.txt'.format(str_now))
+        logger = logging.getLogger('binance')
+        logger.setLevel(logging.INFO)
+        #把print输出到日志文件
+        tmp_out = sys.stdout
+        tmp_err = sys.stderr
+
+        sys.stdout = log_adapter.LoggerWriter(logger, logging.INFO)
+        sys.stderr = log_adapter.LoggerWriter(logger, logging.ERROR)
+
     CONFIG_FILE = 'config_spot.json'
     print("当前目录={}".format(os.getcwd()))
     cf = os.path.join(os.getcwd(), CONFIG_FILE)
@@ -328,6 +357,11 @@ def test():
 
     monitor = BinanceMonitor_EX(market=cfg.market, streams=cfg.streams)
     monitor.run()
+
+    if LOG_FLAG == 1:
+        sys.stdout = tmp_out
+        sys.stderr = tmp_err
+    print("MACD monitor_EX End.")        
     return
 
 test()   
