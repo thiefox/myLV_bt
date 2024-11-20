@@ -318,7 +318,7 @@ def _test() :
 
     su = save_unit(kline_interval.h1)
     #info = save_klines_1M(trade_symbol.BTCUSDT, 2022, 10, su)
-    su = save_unit(kline_interval.m3)
+    su = save_unit(kline_interval.m3, multiple=5)
     save_current_kline(trade_symbol.BTCUSDT, su)
 
     if LOG_FLAG == 1 :

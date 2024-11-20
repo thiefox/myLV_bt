@@ -70,7 +70,6 @@ class save_unit() :
     def __init__(self, interval : kline_interval, multiple : int = 0) :
         self.__inter = interval
         self.__multi = multiple
-        self.begin = 0              #单元开始的时间，毫秒级。在__multi>0时需要设置
         return
     @property
     def interval(self) -> kline_interval:
@@ -114,10 +113,11 @@ class save_unit() :
         return begin
     #判断是否同一保存周期（同一数据文件）
     #base: 基准时间戳，毫秒级（注：base不一定为周期的开始）
+    #如self.multiple>0，则base必须为周期的开始时间戳
     #check: 待检查时间戳，毫秒级
     def is_same_unit(self, base : int, check : int) -> bool:
         if self.multiple > 0 :
-            begin = self.begin
+            begin = base
         else :
             begin = self.get_default_begin(base)
         if begin == 0 :
@@ -150,7 +150,7 @@ class save_unit() :
                 file = '{}-{:0>2}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day, begin.hour, self.interval.value)
             else :
                 file = '{}-{:0>2}-{:0>2}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day,
-                    begin.hour, begin.min, self.interval.value)
+                    begin.hour, begin.minute, self.interval.value)
         elif UNIT == 'h':
             if self.multiple == 0 :
                 file = '{}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day, self.interval.value)
