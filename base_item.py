@@ -81,21 +81,16 @@ class save_unit() :
         OMS = 60        #1分钟秒数
         seconds = 0
         UNIT = self.interval.get_unit()
-        if UNIT == 'm':     #分钟K线
-            if self.multiple == 0 :
+        delta = self.interval.get_delta()
+        if self.multiple > 0 :
+            seconds = self.multiple * int(delta.total_seconds())
+        else :
+            if UNIT == 'm':     #分钟K线
                 seconds = OMS * 60      #默认保存单位为1小时
-            else :
-                seconds = OMS * self.multiple
-        elif UNIT == 'h':   #小时K线
-            if self.multiple == 0 :
+            elif UNIT == 'h':   #小时K线
                 seconds = OMS * 60 * 24      #默认保存单位为1天
-            else :
-                seconds = OMS * 60 * self.multiple
-        elif UNIT == 'd':   #日K线
-            if self.multiple == 0 :
+            elif UNIT == 'd':   #日K线
                 seconds = OMS * 60 * 24 * utility.days_in_month(dt.year, dt.month)      #默认保存单位为1月
-            else :
-                seconds = OMS * 60 * 24 * self.multiple
         return seconds
     #获取保存周期的（理论）开始时间戳，毫秒级
     #实际的数据不一定从这个时间开始，如第一条数据可能是2017-08-17 04:00:00
