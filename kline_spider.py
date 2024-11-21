@@ -274,7 +274,7 @@ def save_current_kline(symbol : trade_symbol, su : save_unit):
             kl_count += 1
             begin = all_klines[unit_begin][0]
             check = kline[0]
-            if not su.is_same_unit(begin, check) :
+            if not su.is_same_unit(begin, check, HEADER=True) :
                 print('重要：一个保存周期完成，all={}, unit_begin={}，保存klines...'.format(len(all_klines), unit_begin))
                 if _save_klines(symbol, su, begin, all_klines[unit_begin:]) :
                     print('保存当前K线数据成功')
@@ -304,7 +304,7 @@ def save_current_kline(symbol : trade_symbol, su : save_unit):
 def _test() :
     print("KLine Spider Start...")
 
-    LOG_FLAG = 1
+    LOG_FLAG = 0
     if LOG_FLAG == 1 :
         str_now = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S') 
         format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

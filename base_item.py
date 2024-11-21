@@ -110,7 +110,8 @@ class save_unit() :
     #base: 基准时间戳，毫秒级（注：base不一定为周期的开始）
     #如self.multiple>0，则base必须为周期的开始时间戳
     #check: 待检查时间戳，毫秒级
-    def is_same_unit(self, base : int, check : int) -> bool:
+    #HEADER: check是否为头部时间戳，即是否为周期的开始时间戳
+    def is_same_unit(self, base : int, check : int, HEADER=True) -> bool:
         if self.multiple > 0 :
             begin = base
         else :
@@ -123,12 +124,12 @@ class save_unit() :
             return False
         win = self.get_unit_seconds(begin) * 1000
         diff = win - (check - begin)
-        print('重要：base={}, begin={}, check={}, WIN={}, diff={}'.format(base, begin, check, win, diff))
+        print('重要：base={}, begin={}, check={}, HEADER={}, WIN={}, diff={}'.format(base, begin, check, HEADER, win, diff))
         s_begin = utility.timestamp_to_string(begin)
         s_base = utility.timestamp_to_string(base)
         s_check = utility.timestamp_to_string(check)
         print('重要：begin时间={}, base时间={}, check时间={}'.format(s_begin, s_base, s_check))
-        return diff >= 0
+        return diff > 0 if HEADER else diff >= 0
     #获取保存的末级目录单位
     def get_save_dir(self, begin : datetime) -> str :
         dir = ''
