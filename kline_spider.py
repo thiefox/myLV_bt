@@ -251,24 +251,27 @@ def save_klines_1Y(symbol : trade_symbol, year : int, su : save_unit) -> tuple:
 def save_current_kline(symbol : trade_symbol, su : save_unit):
     all_klines = list()
     unit_begin = 0
-    MAX_COUNT = 1000
+    kl_count = 0
+    MAX_COUNT = 100
     while True :
         klines = get_kline_data(symbol, su.interval, 0, 1)
         if klines is None or len(klines) == 0:
             print('获取当前K线数据失败')
             break
         assert(isinstance(klines, list))
-        print('内存K线数={}，获取到当前K线数据数量={}'.format(len(all_klines), len(klines)))
+        print('内存K线数={}，获取到当前K线数据数量={}. CN={}'.format(len(all_klines), len(klines), kl_count))
         assert(len(klines) == 1)
         kline = klines[0]
         print('获取K线的开始时间={}，结束时间={}。开盘价={}，收盘价={}'.format(utility.timestamp_to_string(kline[0]), 
             utility.timestamp_to_string(kline[6]), round(float(kline[1]),2), round(float(kline[4]), 2)))
         if len(all_klines) == 0:
             all_klines.append(kline)
+            kl_count += 1
         elif all_klines[-1][0] == kline[0]:
             print('重要：未完成K线数据更新。')
         else :
             print('重要：已生成新的K线！')
+            kl_count += 1
             begin = all_klines[unit_begin][0]
             check = kline[0]
             if not su.is_same_unit(begin, check) :
@@ -283,7 +286,7 @@ def save_current_kline(symbol : trade_symbol, su : save_unit):
                 unit_begin = len(all_klines)
             all_klines.append(kline)
         time.sleep(60)
-        if len(all_klines) >= MAX_COUNT:
+        if kl_count >= MAX_COUNT:
             print('达到最大K线数量={}，退出.'.format(MAX_COUNT))
             break
     
@@ -301,7 +304,7 @@ def save_current_kline(symbol : trade_symbol, su : save_unit):
 def _test() :
     print("KLine Spider Start...")
 
-    LOG_FLAG = 0
+    LOG_FLAG = 1
     if LOG_FLAG == 1 :
         str_now = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S') 
         format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

@@ -124,6 +124,10 @@ class save_unit() :
         win = self.get_unit_seconds(begin) * 1000
         diff = win - (check - begin)
         print('重要：base={}, begin={}, check={}, WIN={}, diff={}'.format(base, begin, check, win, diff))
+        s_begin = utility.timestamp_to_string(begin)
+        s_base = utility.timestamp_to_string(base)
+        s_check = utility.timestamp_to_string(check)
+        print('重要：begin时间={}, base时间={}, check时间={}'.format(s_begin, s_base, s_check))
         return diff >= 0
     #获取保存的末级目录单位
     def get_save_dir(self, begin : datetime) -> str :
