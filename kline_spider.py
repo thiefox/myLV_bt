@@ -28,7 +28,9 @@ from base_item import trade_symbol, kline_interval, MACD_CROSS, save_unit
 
 import fin_util
 
-def get_kline_data(symbol : trade_symbol, inter : kline_interval, begin : int, limit : int) -> list:
+DEFAULT_LIMIT = 500
+
+def _get_kline_data(symbol : trade_symbol, inter : kline_interval, begin : int, limit : int) -> list:
     '''
         [
             1499040000000,      // 开盘时间
@@ -104,13 +106,13 @@ def get_kline_data(symbol : trade_symbol, inter : kline_interval, begin : int, l
         pass
     return infos
 
-def _save_klines(symbol : trade_symbol, su : save_unit, begin : int, klines : list) -> bool:
+def _save(symbol : trade_symbol, su : save_unit, begin : int, klines : list) -> bool:
     begin_t = utility.timestamp_to_datetime(begin)
     if len(klines) == 0:
         print('异常：({}-{}-{})的K线数据为空，无需保存'.format(begin_t.year, begin_t.month, begin_t.day))
         return False
     try :
-        file_name = fin_util.get_kline_file_name(symbol, su, begin_t)
+        file_name = fin_util.get_kline_file_name(symbol, su, begin_t, DIR_MUST_EXISTS=True)
         print('数据文件名={}'.format(file_name))
         with open(file_name, 'w') as f:
             json.dump(klines, f, indent=4, ensure_ascii=False)
@@ -120,44 +122,39 @@ def _save_klines(symbol : trade_symbol, su : save_unit, begin : int, klines : li
         print('保存K线数据到文件{}失败={}'.format(file_name, e))
         return False
 
-#begin和end为币安的时间戳，单位为毫秒
-#如end为0，则表示获取从begin到最新的K线数据
-def save_klines(symbol : trade_symbol, interval : kline_interval, begin : int, end : int) -> tuple:
-    assert(begin > 0)
-    if end == 0 :
-        end = int(datetime.now().timestamp() * 1000)
-    assert(end > begin)
-    begin_t = utility.timestamp_to_datetime(begin)
-    end_t = utility.timestamp_to_datetime(end)
-    print('开始获取{}的K线数据，inter={}, begin={}, end={}...'.format(symbol.value, interval.value, 
-        begin_t.strftime("%Y-%m-%d %H:%M:%S"), end_t.strftime("%Y-%m-%d %H:%M:%S")))
-    klines = list()
-    cur_year = begin_t.year
-    cur_month = begin_t.month
-    info = (0, klines)
-    while cur_year < end_t.year or (cur_year == end_t.year and cur_month <= end_t.month):
-        print('开始获取({}-{})的K线数据...'.format(cur_year, cur_month))
-        info = save_klines_1M(symbol, cur_year, cur_month, interval)
-        print('获取({}-{})K线数据完成，结果={}, K线数={}'.format(cur_year, cur_month, info[0], len(info[1])))
-        klines.extend(info[1])
-        if info[0] == 0:
-            print('获取({}-{})K线数据已达到最新时间，处理结束。'.format(cur_year, cur_month))
+#如count=0，表示获取到最新的K线数据为止
+def get_klines(symbol : trade_symbol, inter : kline_interval, begin : int, count=0) -> list:
+    print('get_klines, interval={}, begin={}({}), count={}'.format(inter.value, begin, utility.timestamp_to_string(begin), count))
+    all_klines = list()
+    need_all = count <= 0
+    limit = DEFAULT_LIMIT
+    while True:
+        if not need_all and  count < limit:
+            limit = count
+        klines = _get_kline_data(symbol, inter, begin, limit)
+        if klines is None or len(klines) == 0:
+            print('获取K线数据失败, begin={}({}), limit={}'.format(begin, utility.timestamp_to_string(begin), limit))
             break
-        elif info[0] == 1:
-            pass
-        elif info[0] < 0:
-            print('异常：获取({}-{})K线数据失败'.format(cur_year, cur_month))
+        assert(isinstance(klines, list))
+        all_klines.extend(klines)
+        if not need_all:
+            count -= len(klines)
+            assert(count >= 0)
+        if len(klines) < limit:
+            print('获取K线数据已达到最新时间1, limit={}, len={}，处理结束。'.format(limit, len(klines)))
             break
-        else :
-            assert(False)
-        cur_month += 1
-        if cur_month > 12:
-            cur_year += 1
-            cur_month = 1
-        time.sleep(3)
-    print('获取{}的K线数据全部完成，inter={}, begin={}, end={}。结果={}，K线数={}'.format(symbol.value, interval.value, 
-        begin_t.strftime("%Y-%m-%d %H:%M:%S"), end_t.strftime("%Y-%m-%d %H:%M:%S"), info[0], len(klines)))
-    return info[0], klines
+        begin = klines[-1][6] + 1
+        now = int(datetime.now().timestamp() * 1000)
+        if begin >= now:
+            print('获取K线数据已达到最新时间2, begin={}({}), now={}({})，处理结束。'.format(begin, utility.timestamp_to_string(begin),
+                now, utility.timestamp_to_string(now)))
+            break
+        if not need_all and count <= 0:
+            print('获取K线数据已达到最新时间3，count={}, 处理结束。'.format(count))
+            break
+        time.sleep(1)   #防止请求过快
+    return all_klines
+
 
 # 获取一月的K线数据并保存到文件
 # tuple[0]=1表示已全部获取成功。
@@ -188,7 +185,7 @@ def save_klines_1M(symbol : trade_symbol, year : int, month : int, su : save_uni
             expired = True
             break
         print('第{}次请求K线数据，cur={},limit={}...'.format(cn, utility.timestamp_to_string(cur), limit))
-        klines = get_kline_data(symbol, su.interval, cur, limit)
+        klines = _get_kline_data(symbol, su.interval, cur, limit)
         if klines is None or len(klines) == 0:
             break
         assert(isinstance(klines, list))
@@ -197,8 +194,9 @@ def save_klines_1M(symbol : trade_symbol, year : int, month : int, su : save_uni
             kline = klines[i]
             #if i == 0 :
             if i >= 0:
-                print('第{}/{}条K线数据的开始时间={}，结束时间={}。'.format(i, len(klines), 
-                    utility.timestamp_to_string(kline[0]), utility.timestamp_to_string(kline[6])))
+                print('第{}/{}条K线数据的开始时间={}，结束时间={}。开始价格={}, 结束价格={}。'.format(i, len(klines),
+                    utility.timestamp_to_string(kline[0]), utility.timestamp_to_string(kline[6]),
+                    round(float(kline[1]),2), round(float(kline[4]), 2)))
                 if abs(kline[0]-cur) > delta:
                     print('K线数据异常，cur={}={}，kline[0]={}={}. real={}, delta={}'.format(cur, utility.timestamp_to_string(cur), 
                         kline[0], utility.timestamp_to_string(kline[0]), kline[6]+1-kline[0], delta))
@@ -225,7 +223,7 @@ def save_klines_1M(symbol : trade_symbol, year : int, month : int, su : save_uni
         print('获取({}-{})K线数据failed'.format(year, month))
         return -1, month_klines
     
-    if _save_klines(symbol, su, begin, month_klines) :
+    if _save(symbol, su, begin, month_klines) :
         if expired:
             return 0, month_klines
         else :
@@ -244,7 +242,7 @@ def save_klines_1Y(symbol : trade_symbol, year : int, su : save_unit) -> tuple:
             break
         elif info[0] < 0:
             print('异常：获取({}-{})K线数据失败'.format(year, i))
-            break
+            #break
         time.sleep(3)
     return info[0], year_lines
 
@@ -254,7 +252,7 @@ def save_current_kline(symbol : trade_symbol, su : save_unit):
     kl_count = 0
     MAX_COUNT = 100
     while True :
-        klines = get_kline_data(symbol, su.interval, 0, 1)
+        klines = _get_kline_data(symbol, su.interval, 0, 1)
         if klines is None or len(klines) == 0:
             print('获取当前K线数据失败')
             break
@@ -276,7 +274,7 @@ def save_current_kline(symbol : trade_symbol, su : save_unit):
             check = kline[0]
             if not su.is_same_unit(begin, check, HEADER=True) :
                 print('重要：一个保存周期完成，all={}, unit_begin={}，保存klines...'.format(len(all_klines), unit_begin))
-                if _save_klines(symbol, su, begin, all_klines[unit_begin:]) :
+                if _save(symbol, su, begin, all_klines[unit_begin:]) :
                     print('保存当前K线数据成功')
                     all_klines.clear()
                 else :
@@ -293,7 +291,7 @@ def save_current_kline(symbol : trade_symbol, su : save_unit):
     if len(all_klines) > unit_begin:
         print('结束循环的收尾：all={}, unit_begin={}，保存klines...'.format(len(all_klines), unit_begin))
         begin = all_klines[unit_begin][0]
-        if _save_klines(symbol, su, begin, all_klines[unit_begin:]) :
+        if _save(symbol, su, begin, all_klines[unit_begin:]) :
             print('保存当前K线数据成功')
         else :
             print('保存当前K线数据失败')
@@ -319,10 +317,19 @@ def _test() :
         sys.stdout = log_adapter.LoggerWriter(logger, logging.INFO)
         sys.stderr = log_adapter.LoggerWriter(logger, logging.ERROR)
 
-    su = save_unit(kline_interval.h1)
-    #info = save_klines_1M(trade_symbol.BTCUSDT, 2022, 10, su)
-    su = save_unit(kline_interval.m3, multiple=5)
-    save_current_kline(trade_symbol.BTCUSDT, su)
+    su = save_unit(kline_interval.d1)
+    #info = save_klines_1M(trade_symbol.BTCUSDT, 2024, 11, su)
+    #su = save_unit(kline_interval.m3, multiple=5)
+    #save_current_kline(trade_symbol.BTCUSDT, su)
+    for year in range(2017, 2025):
+        info = save_klines_1Y(trade_symbol.BTCUSDT, year, su)
+        if info[0] == 0:
+            print('获取({})K线数据已达到最新时间，处理结束。'.format(year))
+            break
+        elif info[0] < 0:
+            print('异常：获取({})K线数据失败'.format(year))
+            break
+        time.sleep(3)
 
     if LOG_FLAG == 1 :
         sys.stdout = tmp_out
@@ -330,4 +337,4 @@ def _test() :
     print("KLine Spider End.")
     return
 
-_test()
+#_test()

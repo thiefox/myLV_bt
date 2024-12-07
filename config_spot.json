@@ -1,19 +1,32 @@
 {
-  "market": "spot",
-  "api_key": "XYCWi1jlDJcOPG8MltM0plnPQlmqFd0wuvCKVuokovxlmwXBADoCI7Ea78h6bX2Y",
-  "api_key_type": "ED25519",
-  "secret_path": "D:/src/python/myLV_bt/data/MYLV_E.pem",
-  "platform": "binance_spot",
-  "symbol": "BTCUSDT",
-  "gap_percent": 0.05,
-  "quantity": 200,
-  "min_price": 0.001,
-  "min_qty": 0.0001,
-  "max_orders": 1,
-  "proxy_host": "",
-  "proxy_port": 0,
-  "dingding_token": "",
-  "dingding_prompt": "[info]",
-  "streams":["btcusdt@kline_6h","btcusdt@bookTicker"]
+  "general": {
+    "market": "spot",
+    "platform": "binance_spot",
+    "streams": [
+      "btcusdt@kline_6h",
+      "btcusdt@bookTicker"
+    ],
+    "api_key": "XYCWi1jlDJcOPG8MltM0plnPQlmqFd0wuvCKVuokovxlmwXBADoCI7Ea78h6bX2Y",
+    "api_key_type": "ED25519",
+    "secret_path": "D:/src/python/myLV_bt/data/MYLV_E.pem",
+    "private_key_pass": "",
+    "pass_phrase": "",
+    "symbol": "BTCUSDT",
+    "gap_percent": 0.05,
+    "quantity": 200,
+    "min_price": 0.01,
+    "min_qty": 1e-05,
+    "max_orders": 1,
+    "proxy_host": "",
+    "proxy_port": 0,
+    "dingding_token": "",
+    "dingding_prompt": ""
+  },
+  "macds": [
+    {
+      "symbol": "BTCUSDT",
+      "interval": "1d",
+      "last_handled_cross": ""
+    }
+  ]
 }
-

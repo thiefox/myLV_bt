@@ -7,14 +7,14 @@ import numpy as np
 from utils import utility
 from utils import log_adapter
 
-from base_item import kline_interval, trade_symbol, MACD_CROSS
+from base_item import kline_interval, trade_symbol, MACD_CROSS, save_unit
 import base_item
 import data_loader
 import fin_util
 import draw_profit
 
 #生成MACD模式每日收益曲线
-def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_interval) -> list:
+def calc_MACD_daily_profit(year_begin : int, year_end : int, su : save_unit) -> list:
     BTCUSDT = trade_symbol.BTCUSDT
     INIT_CASH = 10000
     cash = float(INIT_CASH)     #初始资金
@@ -22,7 +22,7 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
     FEE = base_item.DEFAULT_FEE
     MIN_AMOUNT = base_item.DEF_MIN_AMOUNT
     buy_price = 0
-    klines = data_loader.load_klines_years(trade_symbol.BTCUSDT, year_begin, year_end, interval)
+    klines = data_loader.load_klines_years(trade_symbol.BTCUSDT, year_begin, year_end, su)
     print('共载入的K线数据记录={}'.format(len(klines)))
     if len(klines) == 0:
         return list()
@@ -131,10 +131,10 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
     print('重要：MACD模式最终资金={}, 盈亏={}，收益率={:.2f}%'.format(accounts[-1].cash, accounts[-1].cash-INIT_CASH, \
         fin_util.calc_scale(INIT_CASH, accounts[-1].cash)*100))
 
-    print('金叉买入次数={}, 金叉买入列表={}.'.format(len(gold_ops), ', '.join([str(x) for x in gold_ops])))
-    print('金叉忽略次数={}, 金叉忽略列表={}.'.format(len(ig_gold), ', '.join([str(x) for x in ig_gold])))
-    print('死叉卖出次数={}, 死叉卖出列表={}.'.format(len(dead_ops), ', '.join([str(x) for x in dead_ops])))
-    print('死叉忽略次数={}, 死叉忽略列表={}.'.format(len(ig_dead), ', '.join([str(x) for x in ig_dead])))
+    print('金叉买入次数={}, 金叉买入列表={}.'.format(len(gold_ops), ', '.join(['{}({})'.format(x, dates[x]) for x in gold_ops])))
+    print('金叉忽略次数={}, 金叉忽略列表={}.'.format(len(ig_gold), ', '.join(['{}({})'.format(x, dates[x]) for x in ig_gold])))
+    print('死叉卖出次数={}, 死叉卖出列表={}.'.format(len(dead_ops), ', '.join(['{}({})'.format(x, dates[x]) for x in dead_ops])))
+    print('死叉忽略次数={}, 死叉忽略列表={}.'.format(len(ig_dead), ', '.join(['{}({})'.format(x, dates[x]) for x in ig_dead])))
     print('开始打印买卖操作...')
     BUY_OP = True
     for index in range(0, len(operations)):
@@ -158,7 +158,7 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
         print('MACD最大连续回撤={:.2f}%, 开始日期={}, 结束日期={}'.format(info[0]*100, dates[info[1]], dates[info[2]-1]))        
         bp = pf.get(info[1])
         ep = pf.get(info[2]-1)
-        print('回撤明细1：开始价格={}, 结束价格={}, 回撤={}'.format(bp, ep, ep-bp))
+        print('回撤明细1：开始价格={}, 结束价格={}, 回撤={}'.format(bp, ep, round(ep-bp, 2)))
         bp = profits[info[1]]
         ep = profits[info[2]-1]
         print('回撤明细2：开始价格={}, 结束价格={}, 回撤={}'.format(bp, ep, round(ep-bp, 2)))
@@ -171,6 +171,10 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, interval : kline_in
 
     info = fin_util.calc_hold_days([a.get_amount(BTCUSDT) for a in accounts]) 
     print('MACD模式ACCOUNTS计算，总天数={}, 总持仓天数={}, 最长一次持仓天数={}'.format(len(klines), info[0], info[1]))
+    print('起始资金={}, 起始币数量={}, 起始币价格={:.2f}, 结束币价格={:.2f}'.format(INIT_CASH, 0, INIT_PRICE, closed_prices[-1]))
+    print('重要：MACD模式最终资金={}, 盈亏={}，收益率={:.2f}%'.format(accounts[-1].cash, accounts[-1].cash-INIT_CASH, \
+        fin_util.calc_scale(INIT_CASH, accounts[-1].cash)*100))
+
     print('------------------------------------------------------------')
 
     #开始计算起始买币，最终卖币收益
@@ -205,7 +209,6 @@ def _test() :
     if LOG_FLAG == 1 :
         str_now = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S') 
         format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        #logging.basicConfig(level=logging.INFO, format=format, filename='log/{}_{}_{}H-{}.txt'.format(symbol, year, interval, str_now))
         logging.basicConfig(level=logging.INFO, format=format, filename='log/MACD_history-{}.txt'.format(str_now))
         logger = logging.getLogger('binance')
         logger.setLevel(logging.INFO)
@@ -216,11 +219,10 @@ def _test() :
         sys.stdout = log_adapter.LoggerWriter(logger, logging.INFO)
         sys.stderr = log_adapter.LoggerWriter(logger, logging.ERROR)
     
-
+    su = save_unit(kline_interval.d1)
     #calc_MACD_daily_profit(2017, 2025, kline_interval.d1)
     #draw_klines(2023, 2024, kline_interval.d1)
-    draw_profit.draw_kline_and_profit(2017, 2025, kline_interval.d1, calc_MACD_daily_profit)
-    #draw_kline_and_profit(2017, 2025, kline_interval.d1)
+    draw_profit.draw_kline_and_profit(2017, 2025, su, calc_MACD_daily_profit)
 
     if LOG_FLAG == 1 :
         sys.stdout = tmp_out

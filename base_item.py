@@ -2,6 +2,7 @@ from __future__ import annotations
 import copy
 from enum import Enum
 from typing import Dict
+import os
 from threading import Lock
 
 import math
@@ -45,6 +46,12 @@ class kline_interval(str, Enum):
         else :
             delta = timedelta()
         return delta
+    #判断两个时间是否同一周期
+    #begin: 周期的开始时间
+    def is_same(self, begin : datetime, other : datetime) -> bool:
+        delta = self.get_delta()
+        diff = other - begin
+        return diff.total_seconds() <= delta.total_seconds()
     #判断某条币安K线是否已封闭
     #begin: 开始时间戳，毫秒级
     #end: 结束时间戳，毫秒级
@@ -105,7 +112,25 @@ class save_unit() :
             begin = utility.string_to_timestamp(pos_t.strftime("%Y-%m-%d 00:00:00"))
         elif UNIT == 'd':
             begin = utility.string_to_timestamp(pos_t.strftime("%Y-%m-01 00:00:00"))
+        else :
+            assert(False)
+            pass
         return begin
+    #取得一个文件里的记录数
+    def items_per_file(self, year : int = 0, month : int = 0) -> int :
+        items = 0
+        if self.multiple > 0 :
+            items = self.multiple
+        else :
+            UNIT = self.interval.get_unit()
+            if UNIT == 'm':
+                items = 60
+            elif UNIT == 'h':
+                items = 24
+            elif UNIT == 'd':
+                assert(year > 0 and month > 0)
+                items = utility.days_in_month(year, month)
+        return items
     #判断是否同一保存周期（同一数据文件）
     #base: 基准时间戳，毫秒级（注：base不一定为周期的开始）
     #如self.multiple>0，则base必须为周期的开始时间戳
@@ -161,17 +186,48 @@ class save_unit() :
                 file = '{}-{:0>2}-{}.json'.format(begin.year, begin.month, self.interval.value)
             else :
                 file = '{}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day, self.interval.value)
-        return file    
+        return file   
+    #计算K线偏移量
+    #count: K线数量
+    #如begin=0则从当前时间开始计算
+    #返回毫秒时间戳
+    def calc_offset(self, count : int, begin=0, BACK=True) -> int:
+        offset = 0
+        if begin <= 0 :
+            begin = int(datetime.now().timestamp()) * 1000
+        if BACK :
+            offset = begin - count * self.interval.get_interval_seconds() * 1000
+        else :
+            offset = begin + count * self.interval.get_interval_seconds() * 1000
+        assert(offset > 0)
+        return offset
+
+
             
 
 class trade_symbol(str, Enum):
     BTCUSDT = 'BTCUSDT'
     ETHUSDT = 'ETHUSDT'
+    def get_base(self) -> str:
+        return self.value[:3]
+    def get_quote(self) -> str:
+        return self.value[3:]
+    def get_BTC_USDT() -> trade_symbol:
+        return trade_symbol.BTCUSDT
+    def get_ETH_USDT() -> trade_symbol:
+        return trade_symbol.ETHUSDT
+    def get_BTC_name() -> str:
+        return 'BTC'
+    def get_USDT_name() -> str:
+        return 'USDT'
+    def get_symbol_with_USDT(asset : str) -> trade_symbol :
+        return trade_symbol(asset + trade_symbol.get_USDT_name())
 
 class TRADE_STATUS(Enum):
     IGNORE = 0
     BUY = 1
     SELL = 2
+    HANDLED = 10        #该条K线已处理过
 
 class MACD_CROSS(Enum):
     NONE = 0
@@ -202,20 +258,21 @@ DEF_MIN_AMOUNT = 0.0001     #最小交易数量，如<1，则每次递减1位小
 
 # 持仓数据类
 class holding() :
-    def __init__(self, symbol : trade_symbol, amount : float, cost : float) :
+    def __init__(self, symbol : trade_symbol, free : float, lock : float, cost : float) :
         self.__symbol = symbol
-        self.__amount = amount        #持仓数量
+        self.__free = free          #可用数量
+        self.__lock = lock          #锁定数量
         self.__cost = cost            #持仓成本
         self.__day = ''               #持仓日期，如几次追加则记录最早的持仓日期
         return
     def __str__(self) -> str:
-        return 'symbol={}, amount={}, cost={}'.format(self.__symbol, self.__amount, self.__cost)     
+        return 'symbol={}, free={}, lock={}, cost={}'.format(self.__symbol, self.__free, self.__lock, self.__cost)     
     @property
     def symbol(self) -> trade_symbol:
         return self.__symbol
     @property
     def amount(self) -> float:
-        return round(self.__amount, 4)
+        return round(self.__free, 4)
     
     #计算一次买入成本
     def calc_cost(price : float, amount : float, fee : float) -> float:
@@ -225,31 +282,31 @@ class holding() :
         return round(price * amount * (1 - fee), 2)
     #计算持仓价值
     def hold_asset(self, price : float) -> float:
-        return round(self.__amount * price, 2)
+        return round(self.__free * price, 2)
     #买入
     def _buy(self, amount : float, cost : float, day : str) :
         assert(amount > 0 and cost > 0)
-        if self.__amount == 0 :    #首次买入
+        if self.__free == 0 :    #首次买入
             assert(self.__day == '')
             self.__day = day
-        self.__amount += amount
-        if self.__amount > 0 :
-            self.__cost = (self.__cost * self.__amount + cost) / self.__amount
+        self.__free += amount
+        if self.__free > 0 :
+            self.__cost = (self.__cost * self.__free + cost) / self.__free
         return
     #卖出
     def _sell(self, amount : float, cost : float) :
         assert(amount > 0 and cost > 0)
-        assert(self.__amount >= amount)
-        self.__amount -= amount
+        assert(self.__free >= amount)
+        self.__free -= amount
         #计算股票卖出后的成本价格
-        if self.__amount > 0 :
-            self.__cost = (self.__cost * self.__amount + cost) / self.__amount
-        if self.__amount == 0 :
+        if self.__free > 0 :
+            self.__cost = (self.__cost * self.__free + cost) / self.__free
+        if self.__free == 0 :
             self.__day = ''
         return
     #计算持仓天数
     def hold_days(self, day : str) -> int:
-        if self.__amount == 0:
+        if self.__free == 0:
             return 0
         assert(self.__day != '' and day != '')
         #计算两个YYYY-MM-DD日期之间的天数
@@ -292,6 +349,15 @@ class part_account() :
         if symbol in self.__holdings :
             return self.__holdings[symbol]
         return None  
+    def init_holding(self, symbol : trade_symbol, free : float, locked : float, cost : float, day : str) :
+        hold = self.get_holding(symbol)
+        if hold is None :
+            hold = holding(symbol, free, locked, cost)
+            self.__holdings[symbol] = hold
+        else :
+            assert(False)
+            pass
+        return
     def get_amount(self, symbol : trade_symbol) -> float:
         hold = self.get_holding(symbol)
         if hold is None :
@@ -320,7 +386,7 @@ class part_account() :
             day = datetime.now().strftime("%Y-%m-%d")
         hold = self.get_holding(symbol)
         if hold is None :
-            hold = holding(symbol, 0, 0)
+            hold = holding(symbol, 0, 0, 0)
             self.__holdings[symbol] = hold
 
         cur_cost = holding.calc_cost(price, amount, fee)

@@ -7,12 +7,13 @@ from datetime import datetime
 
 import base_item
 
-def get_kline_file_name(symbol : base_item.trade_symbol, su : base_item.save_unit, dt : datetime) -> str:
+def get_kline_file_name(symbol : base_item.trade_symbol, su : base_item.save_unit, dt : datetime, DIR_MUST_EXISTS=False) -> str:
     base_dir = '{}\\data\\{}\\kline\\{}'.format(os.getcwd(), symbol.value, su.interval.value)
     last_dir = su.get_save_dir(dt)
     base_dir = '{}\\{}'.format(base_dir, last_dir)
     #print('base_dir={}'.format(base_dir))
-    os.makedirs(base_dir, exist_ok=True)
+    if DIR_MUST_EXISTS and not os.path.exists(base_dir):
+        os.makedirs(base_dir, exist_ok=True)
     file_name = su.get_save_file(dt)
     file_name = '{}\\{}'.format(base_dir, file_name)
     #print('file_name={}'.format(file_name))

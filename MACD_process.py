@@ -13,21 +13,31 @@ import data_loader
 import fin_util
 import draw_profit
 import kline_spider
+
 class MACD_processor():
-    #WINDOW_LENGTH=0表示不限制K线数量
-    #114天结果和无限一样，114为最小临界窗口
-    WINDOW_LENGTH = 120
     SLOW_PERIOD = 26
     FAST_PERIOD = 12
     SIGNAL_PERIOD = 9
-    def __init__(self, symbol : base_item.trade_symbol) -> None:
-        self.__account = None
+    MAX_CROSS_COUNT = 200
+    def _reset_klines(self):
         self.__klines = pd.DataFrame(columns=['date_b', 'open', 'high', 'low', 'close', 
             'volume', 'date_e', 'amount', 'count', 'buy_amount', 'buy_money', 'ignore'])
+        return
+    def __init__(self, symbol : base_item.trade_symbol, last_handled = 0) -> None:
+        assert(isinstance(last_handled, int))
+        self.__account = base_item.part_account('13', 'thiefox')
+        self._reset_klines()
         self.__symbol = symbol
         self.DAILY_LOG = False
         self.dailies = pd.DataFrame(columns=['date', 'cash', 'hold', 'profit'])
-        self.crosses = list()
+        #交叉点列表，索引/交叉点/交易状态/时间戳
+        self.crosses = list[int, base_item.MACD_CROSS, base_item.TRADE_STATUS, int]()        
+        self.last_handled = last_handled    #最后处理的交叉点时间戳，毫秒级
+        if self.last_handled > 0 :
+            print('processor初始化，最后处理交叉点={}'.format(utility.timestamp_to_string(last_handled)))
+        #WINDOW_LENGTH=0表示不限制K线数量
+        #114天结果和无限一样，114为最小临界窗口
+        self.WINDOW_LENGTH = 120
         return
     @property
     def symbol(self) -> base_item.trade_symbol:
@@ -35,41 +45,84 @@ class MACD_processor():
     @property
     def account(self) -> base_item.part_account:
         return self.__account
+    @property
+    def len(self) -> int:
+        return len(self.__klines)
     def set_account(self, account : base_item.part_account):
         self.__account = account
         return
     def open_daily_log(self, LOG : bool):
         self.DAILY_LOG = LOG
         return
-    #更新一条K线数据
-    def update_kline(self, kline : list) -> tuple[base_item.MACD_CROSS, base_item.TRADE_STATUS]:
-        begin_len = len(self.__klines)
-        '''
-        if begin_len > 0 :
-            print('添加前K线, first index={}, last index={}...'.format(self.__klines.index[0], self.__klines.index[-1]))
-        print('{}'.format(self.__klines))
-        '''
-        if begin_len == 0 :
-            index = 0
-        else :
-            index = self.__klines.index[-1] + 1
-        #self.__klines.loc[len(self.__klines)] = data_loader.get_kline_shape(kline)
-        self.__klines.loc[index] = data_loader.get_kline_shape(kline)
-        
+    def get_last_cross(self) -> tuple[base_item.MACD_CROSS, base_item.TRADE_STATUS, int]:
+        info = (base_item.MACD_CROSS.NONE, base_item.TRADE_STATUS.IGNORE, 0)
+        return
+    #初始化历史K线数据
+    def init_history(self, klines : list) -> int:
+        print('初始化历史K线数据...')
+        self._reset_klines()    #复位
+        begin = 0
         #保留最近的WINDOW_LENGTH条K线数据
-        if self.WINDOW_LENGTH > 0 and len(self.__klines) > self.WINDOW_LENGTH :
-            #self.__klines = self.__klines.iloc[-self.WINDOW_LENGTH:]
-            #删除第一条K线
-            self.__klines = self.__klines.drop(self.__klines.index[0])
-            #print('重要：弹出失效K线，剩余数量={}'.format(len(self.__klines)))
+        if self.WINDOW_LENGTH > 0 and len(klines) > self.WINDOW_LENGTH :
+            begin = len(klines) - self.WINDOW_LENGTH
+        for kline in klines[begin:]:
+            self.__klines.loc[len(self.__klines)] = data_loader.get_kline_shape(kline)
+        self.print_kline(0)
+        self.print_kline(-1)
+        print('初始化历史K线数据完成，共{}条K线.'.format(len(self.__klines)))
+        return len(self.__klines)
+    #更新一条K线数据
+    def update_kline(self, kline : list) -> tuple[base_item.MACD_CROSS, base_item.TRADE_STATUS, int]:
+        kline = data_loader.get_kline_shape(kline)
+        if len(self.__klines) > 0 :
+            print('update_kline, 头索引={}, 尾索引={}...'.format(self.__klines.index[0], self.__klines.index[-1]))
+        #print('{}'.format(self.__klines))
+        if len(self.__klines) == 0 :    #第一条K线
+            self.__klines.loc[0] = kline
+            print('重要：第一条K线，日期={}.'.format(utility.timestamp_to_string(kline[0], ONLY_DATE=True)))
+        else :
+            last_begin = int(self.__klines.iloc[-1, 0])
+            last_index = self.__klines.index[-1] 
+            if last_begin == kline[0] : #开始时间戳相同->最后一条K线的更新
+                self.__klines.loc[last_index] = kline
+                print('重要：更新最后一条K线，日期={}，开始价={}，最新价={}.'.format(utility.timestamp_to_string(kline[0], ONLY_DATE=True), 
+                    round(self.__klines.loc[last_index, 'open'], 2), round(self.__klines.loc[last_index, 'close'], 2)))
+                    #round(kline[4], 2)))
+            else :      #新增一条K线
+                self.__klines.loc[last_index+1] = kline
+                print('重要：新增一条K线，日期={}.'.format(utility.timestamp_to_string(kline[0], ONLY_DATE=True)))
+                #保留最近的WINDOW_LENGTH条K线数据
+                if self.WINDOW_LENGTH > 0 and len(self.__klines) > self.WINDOW_LENGTH :
+                    #self.__klines = self.__klines.iloc[-self.WINDOW_LENGTH:]
+                    #删除第一条K线
+                    self.__klines = self.__klines.drop(self.__klines.index[0])
+                    print('重要：弹出失效K线，剩余数量={}'.format(len(self.__klines)))
+        if self.WINDOW_LENGTH > 0 :
+            assert(len(self.__klines) <= self.WINDOW_LENGTH)
         #取得第一条K线的日期
         #first_date = int(self.__klines.loc[self.__klines.index[0], 'date_b'])
         first_date = int(self.__klines.iloc[0, 0])
         last_date = int(self.__klines.iloc[-1, 0])
         date_first = utility.timestamp_to_string(first_date, ONLY_DATE=True)
         date_last = utility.timestamp_to_string(last_date, ONLY_DATE=True)
-        #print('重要：窗口={}, 第一条K线={}，最后一条K线={}.'.format(len(self.__klines), date_first, date_last))
+        print('重要：窗口={}, 第一条K线={}，最后一条K线={}.'.format(len(self.__klines), date_first, date_last))
         return self.__process()    
+    #打印某条K线数据，index区间为[-len(klines), len(klines)-1]，即iloc坐标系
+    def print_kline(self, index : int):
+        if abs(index) >= len(self.__klines) :
+            return
+        begin = int(self.__klines.iloc[index, 0])
+        s_begin = utility.timestamp_to_string(begin)
+        end = int(self.__klines.iloc[index, 6])
+        s_end = utility.timestamp_to_string(end)
+        print('第{}条K线开始={}, 结束={}，开盘价={}, 收盘价={}, 最高价={}, 最低价={}。'.format(index, s_begin, s_end,
+            self.__klines.iloc[index, 1], self.__klines.iloc[index, 4], 
+            self.__klines.iloc[index, 2], self.__klines.iloc[index, 3]))
+        return
+    def get_time_begin(self, index : int) -> int:
+        return int(self.__klines.iloc[index, 0])
+    def get_time_end(self, index : int) -> int:
+        return int(self.__klines.iloc[index, 6])
     #挂出买单，返回挂单ID
     def __post_buying(self, amount : float, price : float) -> str:
         order_id = ''
@@ -133,24 +186,46 @@ class MACD_processor():
                     amount))
         return status
 
-    def __process(self) -> tuple[base_item.MACD_CROSS, base_item.TRADE_STATUS]:
+    def __process(self) -> tuple[base_item.MACD_CROSS, base_item.TRADE_STATUS, int]:
         cross = base_item.MACD_CROSS.NONE
         status = base_item.TRADE_STATUS.IGNORE
         #获取收盘价列表
         assert(len(self.__klines) > 0)
         #获取最后一条K线的收盘价
         #close = self.__klines.loc[len(self.__klines)-1, 'close']  #最后一条K线的收盘价
+        opens = self.__klines['open'].tolist()
         closes = self.__klines['close'].tolist()
         dates = self.__klines['date_b'].tolist()
         dates = [utility.timestamp_to_string(int(i), ONLY_DATE=True) for i in dates]
         #print('closes={}'.format(closes))
+        last_date_end = utility.timestamp_to_string(int(self.__klines.loc[len(self.__klines)-1, 'date_e']))
+        print('当前K线数量，方法1={}，方法2={}'.format(len(closes), len(self.__klines)))
+        print('最后一条K线，开始时间={}, 结束时间={}，开盘价={}, 收盘价={}'.format(dates[-1], last_date_end, opens[-1], closes[-1]))
         if len(closes) > 0 :
             assert(isinstance(closes[0], float))
         pi = fin_util.prices_info(closes)
         #计算MACD
         macd, signal, hist = pi.calculate_macd()
         crossovers = fin_util.find_macd_crossovers(macd, signal, hist)
-        #print('共找到{}个MACD交叉点...'.format(len(crossovers)))
+        if len(crossovers) > 0 :
+            cur = 0
+            his = 0
+            #倒着遍历cross列表
+            for cross in crossovers[::-1]:
+                index = cross[0]
+                cross_type = cross[1]
+                if index == len(closes) - 1 :
+                    print('重要：当前K线发现交叉点，=({}({}),{})'.format(index, dates[index], cross_type))
+                    cur += 1
+                else :
+                    print('历史K线发现交叉点，=({}({}),{})'.format(index, dates[index], cross_type))
+                    his += 1
+            if cur > 0 :
+                print('重要：共找到{}个MACD交叉点，其中当前K线={}个，历史K线={}个。'.format(len(crossovers), cur, his))
+            else :
+                print('重要：共找到{}个MACD交叉点，全部为历史K线={}个。'.format(len(crossovers), his))
+
+
         if len(crossovers) > 0 :
             index = crossovers[-1][0]
             cross = crossovers[-1][1]
@@ -166,22 +241,38 @@ class MACD_processor():
                     else :
                         print('异常：交叉点=({},{})和最后一个交叉点=({},{})相同类型.'.format(oi, cross, last_oi, last_cross))
                 elif oi == last_oi :
+                    #同一个交叉点
                     pass
                 else :
                     print('异常：交叉点=({},{})不是最新位置，最后一个有效交叉=({},{}).'.format(oi, cross, last_oi, last_cross))
+
             if index == len(closes) - 1 :        #最新的K线上有交叉
-                status = self.__process_cross(cross, index)
-                print('重要：出现新的MACD交叉点={}, 日期={}, index={}, 处理={}.'.format(cross, dates[index], index, status))
+                if self.last_handled == 0 or self.last_handled < dates[index] :
+                    status = self.__process_cross(cross, index)
+                    print('重要：出现新的MACD交叉点={}, 日期={}, index={}, 处理结果={}.'.format(cross, dates[index], index, status))
+                    self.last_handled = dates[index]
+                elif self.last_handled == dates[index] :
+                    print('重要：K线交叉点={}已处理，时间={}({}), index={}.'.format(cross, dates[index],
+                        utility.timestamp_to_string(dates[index]), index))
+                    status = base_item.TRADE_STATUS.HANDLED
+                else :
+                    print('异常：交叉点={}，时间={}({})，小于最后处理时间={}({}).'.format(cross, dates[index], 
+                        utility.timestamp_to_string(dates[index]), self.last_handled, utility.timestamp_to_string(self.last_handled)))
+                    assert(False)
             else :
                 #assert(False)
                 cross = base_item.MACD_CROSS.NONE
                 pass
+
+        if MACD_processor.MAX_CROSS_COUNT > 0 and len(self.crosses) > MACD_processor.MAX_CROSS_COUNT :
+                self.crosses = self.crosses[-self.MAX_CROSS_COUNT:]
+
         if self.DAILY_LOG :
             #如当天发现交叉，则cash和hold为处理交叉后的数据
             #prices = {base_item.trade_symbol.BTCUSDT: closes[-1], }
             profit = self.account.cash + self.account.get_amount(self.symbol) * closes[-1]
             self.dailies.loc[len(self.dailies)] = [dates[-1], self.account.cash, self.account.get_amount(self.symbol), profit]
-        return cross, status
+        return cross, status, self.last_handled
     
     def print_cross(self):
         #获取self.crosses中的金叉列表和死叉列表
@@ -230,11 +321,11 @@ def calc_profit(year_begin : int, year_end : int, interval : base_item.kline_int
         if result[0].is_golden() :
             #print('重要：日期={}，第{}条K线发现金叉。'.format(dates[i], i))
             gold_cross.append(i)
-            operations.append((i, result[0], result[1]))
+            operations.append((i, result[0], result[1], result[2]))
         elif result[0].is_dead():
             #print('重要：日期={}，第{}条K线发现死叉。'.format(dates[i], i))
             dead_cross.append(i)
-            operations.append((i, result[0], result[1]))
+            operations.append((i, result[0], result[1], result[2]))
         else :
             pass
 
@@ -263,7 +354,7 @@ def calc_profit(year_begin : int, year_end : int, interval : base_item.kline_int
             if op[2] == base_item.TRADE_STATUS.BUY:
                 print('重要：金叉买入，i={}，日期={}，价格={:.2f}，数量={}，资金={}，总值={:.2f}'.format(op[0], date_str, price,
                     daily['hold'], daily['cash'], daily['profit']))
-            elif op[2] == base_item.TRADE_STATUS.IGNORE:
+            elif op[2] == base_item.TRADE_STATUS.IGNORE or op[2] == base_item.TRADE_STATUS.HANDLED:
                 print('异常：金叉忽略，i={}，日期={}，价格={:.2f}，数量={}，资金={}，总值={:.2f}'.format(op[0], date_str, price,
                     daily['hold'], daily['cash'], daily['profit']))
             else :
@@ -274,7 +365,7 @@ def calc_profit(year_begin : int, year_end : int, interval : base_item.kline_int
             if op[2] == base_item.TRADE_STATUS.SELL:
                 print('重要：死叉卖出，i={}，日期={}，价格={:.2f}，数量={}，资金={}，总值={:.2f}'.format(op[0], date_str, price,
                     daily['hold'], daily['cash'], daily['profit']))
-            elif op[2] == base_item.TRADE_STATUS.IGNORE:
+            elif op[2] == base_item.TRADE_STATUS.IGNORE or op[2] == base_item.TRADE_STATUS.HANDLED:
                 print('异常：死叉忽略，i={}，日期={}，价格={:.2f}，数量={}，资金={}，总值={:.2f}'.format(op[0], date_str, price,
                     daily['hold'], daily['cash'], daily['profit']))
             else :
@@ -330,8 +421,9 @@ def _test() :
         sys.stdout = log_adapter.LoggerWriter(logger, logging.INFO)
         sys.stderr = log_adapter.LoggerWriter(logger, logging.ERROR)
     
+    su = base_item.save_unit(base_item.kline_interval.d1)
     #calc_profit(2017, 2025, base_item.kline_interval.d1)
-    draw_profit.draw_kline_and_profit(2017, 2025, base_item.kline_interval.d1, calc_profit)
+    draw_profit.draw_kline_and_profit(2017, 2025, su, calc_profit)
 
     if LOG_FLAG == 1:
         sys.stdout = tmp_out
@@ -340,7 +432,7 @@ def _test() :
     return
 
 def processor() -> int:
-    interval = base_item.kline_interval.h1
+    su = base_item.save_unit(base_item.kline_interval.d1)
     BEGIN_YEAR = 2017
     CUR_YEAR = datetime.now().year
     CUR_MONTH = datetime.now().month
@@ -348,7 +440,7 @@ def processor() -> int:
     all_klines = list()
     for i in range(BEGIN_YEAR, CUR_YEAR+1):
         YEAR_DAYS = utility.days_in_year(i)
-        year_klines = data_loader.load_klines_1Y(base_item.trade_symbol.BTCUSDT, i, interval)
+        year_klines = data_loader.load_klines_1Y(base_item.trade_symbol.BTCUSDT, i, su)
         if len(year_klines) > 0:
             last_begin = utility.timestamp_to_datetime(year_klines[-1][0])
             last_end = utility.timestamp_to_datetime(year_klines[-1][6])
@@ -356,7 +448,7 @@ def processor() -> int:
                 last_begin.strftime('%Y-%m-%d %H:%M:%S'), last_end.strftime('%Y-%m-%d %H:%M:%S')))
             dates = [kline[0] for kline in year_klines]
             if i < CUR_YEAR :
-                if fin_util.check_time_continuity(dates, base_item.kline_interval.d1) and last_begin.strftime('%m%d') == '1231':
+                if fin_util.check_time_continuity(dates, su.interval) and last_begin.strftime('%m%d') == '1231':
                     print('重要：历史年{}K线数据时间连续。'.format(i))
                     all_klines.extend(year_klines)
                 else :
@@ -366,7 +458,7 @@ def processor() -> int:
                     print('异常：中间历史年{}K线数据不全，应有{}条，实际{}条。'.format(i, YEAR_DAYS, len(year_klines)))
                     return -1
             else :
-                if fin_util.check_time_continuity(dates, base_item.kline_interval.d1):
+                if fin_util.check_time_continuity(dates, su.interval):
                     print('重要：当前年{}K线数据时间连续。'.format(i))
                     all_klines.extend(year_klines)
                 else :
@@ -375,12 +467,10 @@ def processor() -> int:
         else :
             print('异常：{}年K线数据为空。'.format(i))
 
-
-
     #current_date_int = int(datetime.now().strftime('%Y%m%d'))
     #print("当前日期的年月日整数形式: {current_date_int}")
 
     return 0
 
-processor()
+#processor()
 #_test()

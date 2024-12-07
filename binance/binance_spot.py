@@ -8,6 +8,10 @@ import requests
 import time
 from enum import Enum
 from threading import Lock
+
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
 from binance.authentication import hmac_hashing, rsa_signature, ed25519_signature
 
 class OrderStatus(Enum):
@@ -18,7 +22,6 @@ class OrderStatus(Enum):
     PENDING_CANCEL = "PENDING_CANCEL"       #该订单在取消中？
     REJECTED = "REJECTED"
     EXPIRED = "EXPIRED"                     #该订单已过期
-
 
 class OrderType(Enum):
     LIMIT = "LIMIT"     #限价单，要求的参数timeInForce, quantity, price。限价单重点在于按客户预设的价格进行操作	
@@ -43,7 +46,6 @@ class RequestMethod(Enum):
     POST = 'POST'
     PUT = 'PUT'
     DELETE = 'DELETE'
-
 
 class timeInForce(Enum):
     """
@@ -79,7 +81,6 @@ class OrderSide(Enum):
     SELL = "SELL"
 
 class BinanceSpotHttp(object):
-
     def __init__(self, api_key=None, api_secret=None, private_key=None, private_key_pass=None, host=None, proxy_host=None, proxy_port=0, timeout=5, try_counts=5):
         self.api_key = api_key
         self.api_secret = api_secret
@@ -88,14 +89,15 @@ class BinanceSpotHttp(object):
         self.host = host if host else "https://api.binance.com"
         self.recv_window = 10000
         self.timeout = timeout
-        self.order_count_lock = Lock()
-        self.order_count = 1_000_000
+        self.__order_lock = Lock()
+        #self.order_count = 1_000_000
+        self.__order_index = 0
         self.try_counts = try_counts # 失败尝试的次数.
         self.proxy_host = proxy_host
         self.proxy_port = proxy_port
 
     @property
-    def proxies(self):
+    def proxies(self) -> dict:
         if self.proxy_host and self.proxy_port:
             proxy = f"http://{self.proxy_host}:{self.proxy_port}"
             return {"http": proxy, "https": proxy}
@@ -107,7 +109,8 @@ class BinanceSpotHttp(object):
         keys.sort()
         return '&'.join([f"{key}={params[key]}" for key in params.keys()])
 
-    def request(self, req_method: RequestMethod, path: str, requery_dict=None, verify=False):
+    def request(self, req_method: RequestMethod, path: str, requery_dict:dict=None, verify=False) -> dict:
+        return self.request_ex(req_method, path, requery_dict, verify)
         url = self.host + path
 
         if verify:
@@ -116,23 +119,89 @@ class BinanceSpotHttp(object):
         elif requery_dict:
             url += '?' + BinanceSpotHttp.build_parameters(requery_dict)
         headers = {"X-MBX-APIKEY": self.api_key}
-        print('url={}'.format(url))
+        print('请求url={}'.format(url))
         for i in range(0, self.try_counts):
             try:
                 response = requests.request(req_method.value, url=url, headers=headers, timeout=self.timeout, proxies=self.proxies)
                 if response.status_code == 200:
                     return response.json()
                 else:
-                    print(response.json(), response.status_code)
+                    print('请求失败, status_code={}，data={}'.format(response.status_code, response.json()))
             except Exception as error:
                 print(f"请求:{path}, 发生了错误: {error}")
                 time.sleep(3)
 
-    def get_server_time(self):
+    #返回一般为dict/list，看具体请求
+    def request_ex(self, method : RequestMethod, url : str, params : dict = None, sign=False):
+        url = self.host + url
+        headers = {"X-MBX-APIKEY": self.api_key}
+        if sign:
+            assert(params is not None)
+            query_str = self._sign(params)
+            url += '?' + query_str
+        elif params is not None:
+            url += '?' + BinanceSpotHttp.build_parameters(params)
+        print('请求URL={}'.format(url)) 
+        response = None
+        for i in range(0, self.try_counts):
+            try :
+                #response = requests.get(url, params=param_dict)
+                session = requests.Session()
+                #session = requests.session()
+                session.keep_alive = False
+                retry = Retry(connect=5, backoff_factor=0.5)
+                adapter = HTTPAdapter(max_retries=retry)
+                session.mount('http://', adapter)
+                session.mount('https://', adapter)
+                print('请求数据, method={}...'.format(method.value))
+                if method == RequestMethod.GET:
+                    response = session.get(url, headers=headers, timeout=self.timeout, proxies=self.proxies)
+                elif method == RequestMethod.POST:
+                    response = session.post(url, headers=headers, timeout=self.timeout, proxies=self.proxies)
+                elif method == RequestMethod.DELETE:
+                    response = session.delete(url, headers=headers, timeout=self.timeout, proxies=self.proxies)
+                elif method == RequestMethod.PUT:
+                    response = session.put(url, headers=headers, timeout=self.timeout, proxies=self.proxies)
+                print('请求数据完成')
+            except requests.exceptions.ConnectionError:
+                print('异常:requests.exceptions.ConnectionError')
+            except requests.exceptions.ConnectTimeout:
+                print('异常:requests.exceptions.ConnectTimeout')
+            except requests.exceptions.Timeout:
+                print('异常:requests.exceptions.Timeout')
+            except Exception as e:
+                print('请求数据失败={}'.format(e))
+            finally:
+                session.close()
+            if response is not None:
+                break
+            print('尝试次数={}，休眠3秒...'.format(i))
+            time.sleep(3)
+
+        infos = None
+        if response is not None:    
+            print('response={}'.format(response))
+            infos = None
+            if response.status_code == 200:
+                infos = response.json()
+            else :
+                print('请求失败, status_code={}，data={}'.format(response.status_code, response.json()))
+            response.close()
+        else :
+            print('请求失败')
+            pass
+        return infos
+
+    def get_server_time(self) -> dict:
+        # 获取服务器时间
+        """
+        return:
+        {'serverTime': 1733207400464} ->返回的是当地时间而非UTC时间
+        """
         path = '/api/v3/time'
         return self.request(req_method=RequestMethod.GET, path=path)
 
-    def get_exchange_info(self):
+    def get_exchange_info(self, symbol : str) -> dict:
         # 获取交易规则和交易对信息
         """
         return:
@@ -152,11 +221,40 @@ class BinanceSpotHttp(object):
          'orderTypes': ['LIMIT', 'MARKET', 'STOP'], 'timeInForce': ['GTC', 'IOC', 'FOK', 'GTX']}]}
         """
         path = '/api/v3/exchangeInfo'
-        query_dict = {'symbol': 'BTCUSDT',
+        query_dict = {'symbol': symbol,
                       'showPermissionSets': 'false'}
         return self.request(RequestMethod.GET, path, query_dict)
+    
+    def get_exchange_params(self, symbol : str) -> dict:
+        params = {'min_quantity': 0,
+                  'max_quantity': 0,
+                  'min_price': 0,
+                  'max_price': 0}
+        info = self.get_exchange_info(symbol)
+        if info is not None and isinstance(info, dict) :
+            if 'symbols' in info :
+                symbols = info['symbols']
+                for sym in symbols :
+                    if sym['symbol'] == symbol :
+                        if 'filters' in sym :
+                            filters = sym['filters']
+                            for filter in filters :
+                                if 'filterType' in filter and filter['filterType'] == 'LOT_SIZE' :
+                                    print('filter={}'.format(filter))
+                                    if 'minQty' in filter :
+                                        params['min_quantity'] = float(filter['minQty'])
+                                    if 'maxQty' in filter :
+                                        params['max_quantity'] = float(filter['maxQty'])
+                                if 'filterType' in filter and filter['filterType'] == 'PRICE_FILTER' :
+                                    if 'minPrice' in filter :
+                                        params['min_price'] = float(filter['minPrice'])
+                                    if 'maxPrice' in filter :
+                                        params['max_price'] = float(filter['maxPrice'])
 
-    def get_order_book(self, symbol, limit=5):
+                        break
+        return params
+
+    def get_order_book(self, symbol : str, limit=5) -> dict:
         # 获取交易深度，当前的买盘价和卖盘价
         """
         :param symbol: BTCUSDT, BNBUSDT ect, 交易对.
@@ -175,7 +273,7 @@ class BinanceSpotHttp(object):
 
         return self.request(RequestMethod.GET, path, query_dict)
 
-    def get_kline(self, symbol, interval: Interval, start_time=None, end_time=None, limit=500, max_try_time=10):
+    def get_kline(self, symbol: str, interval: Interval, start_time=None, end_time=None, limit=500, max_try_time=10) -> list:
         """
         获取K线数据.
         :param symbol:
@@ -202,10 +300,10 @@ class BinanceSpotHttp(object):
 
         for i in range(max_try_time):
             data = self.request(RequestMethod.GET, path, query_dict)
-            if isinstance(data, list) and len(data):
+            if isinstance(data, list) and len(data) > 0:
                 return data
 
-    def get_latest_price(self, symbol):
+    def get_latest_price(self, symbol) -> dict:
         """
         :param symbol: 获取最新的价格. 一般用于OVERVIEW多个交易对的价格.
         :return: {'symbol': 'BTCUSDT', 'price': '9168.90000000'}
@@ -235,11 +333,11 @@ class BinanceSpotHttp(object):
         generate the client_order_id for user.
         :return:
         """
-        with self.order_count_lock:
-            self.order_count += 1
-            return "x-A6SIDXVS" + str(self.get_current_timestamp()) + str(self.order_count)
+        with self.__order_lock:
+            self.__order_index += 1
+            return "x-A6SIDXVS" + str(self.get_current_timestamp()) + str(self.__order_index)
 
-    #本地函数，获取系统时间
+    #获取毫秒级本地时间
     def get_current_timestamp(self) -> int:
         """
         获取系统的时间.
@@ -266,7 +364,7 @@ class BinanceSpotHttp(object):
         return query_string + '&signature=' + str(self._get_sign(query_string))
  
     def place_order(self, symbol: str, order_side: OrderSide, order_type: OrderType, quantity: float, price: float,
-                    client_order_id: str = None, time_inforce=timeInForce.GTC, stop_price=0) -> dict:
+                    client_order_id: str = None, time_inforce=timeInForce.GTC, stop_price=0, quoteOrderQty:float=0) -> dict:
         """
 
         :param symbol: 交易对名称
@@ -294,6 +392,11 @@ class BinanceSpotHttp(object):
             "recvWindow": self.recv_window,
             "timestamp": self.get_current_timestamp(),
             "newClientOrderId": client_order_id
+            #市价买卖单可用quoteOrderQty参数来设置quote asset数量. 正确的quantity取决于市场的流动性与quoteOrderQty
+            #例如: 市价 BUY BTCUSDT，单子会基于quoteOrderQty- USDT 的数量，购买 BTC.
+            #市价 SELL BTCUSDT，单子会卖出 BTC 来满足quoteOrderQty- USDT 的数量.
+            #比如我现在有1000USDT，我想用这1000USDT买BTC，那么quoteOrderQty就是1000，quantity就是0
+            #quoteOrderQty
         }
 
         if order_type == OrderType.LIMIT:
@@ -306,6 +409,10 @@ class BinanceSpotHttp(object):
                 del params['price']
             assert('price' not in params)
             assert('quantity' in params)
+            if quoteOrderQty > 0:
+                params['quoteOrderQty'] = quoteOrderQty
+                del params['quantity']
+
         elif order_type == OrderType.STOP_LOSS or order_type == OrderType.STOP_LOSS_LIMIT:
             if stop_price > 0:
                 params["stopPrice"] = stop_price
@@ -349,7 +456,7 @@ class BinanceSpotHttp(object):
                 print(f'cancel order error:{error}')
         return None
 
-    def get_open_orders(self, symbol=None):
+    def get_open_orders(self, symbol:str='') -> list:
         """
         获取用户所有开放中的订单.
         :param symbol: BNBUSDT, or BTCUSDT etc.
@@ -359,12 +466,12 @@ class BinanceSpotHttp(object):
         path = "/api/v3/openOrders"
 
         params = {"timestamp": self.get_current_timestamp()}
-        if symbol:
+        if symbol != '':
             params["symbol"] = symbol
 
         return self.request(RequestMethod.GET, path, params, verify=True)
 
-    def cancel_open_orders(self, symbol):
+    def cancel_open_orders(self, symbol : str) -> list:
         """
         撤销某个交易对的所有挂单
         :param symbol: symbol
@@ -380,7 +487,7 @@ class BinanceSpotHttp(object):
         return self.request(RequestMethod.DELETE, path, params, verify=True)
 
     # 获取账户信息（获取用户的所有持仓）
-    def get_account_info(self):
+    def get_account_info(self) -> dict:
         """
         {'feeTier': 2, 'canTrade': True, 'canDeposit': True, 'canWithdraw': True, 'updateTime': 0, 'totalInitialMargin': '0.00000000',
         'totalMaintMargin': '0.00000000', 'totalWalletBalance': '530.21334791', 'totalUnrealizedProfit': '0.00000000',
@@ -396,3 +503,78 @@ class BinanceSpotHttp(object):
                   "recvWindow": self.recv_window
                   }
         return self.request(RequestMethod.GET, path, params, verify=True)
+
+    def get_balance(self, asset: str = 'BTC') -> float:
+        """
+        获取某个资产(BTC/USDT)的余额.
+        :param asset: 资产名称
+        :return:
+        """
+        account_info = self.get_account_info()
+        if account_info is not None and 'balances' in account_info:
+            for balance in account_info['balances']:
+                if balance['asset'] == asset:
+                    return float(balance['free'])
+        return 0.0
+    
+    def sell_all(self, asset : str):
+        """
+        卖出所有的某个币种
+        :param symbol: 交易对
+        :param price: 卖出价格
+        :param quantity: 卖出数量
+        :return:
+        """
+
+        amount = self.get_balance(asset)
+        if amount > 0:
+            #对卖出数量进行步进处理
+            params = self.get_exchange_params(asset + 'USDT')
+            if params is not None and 'min_quantity' in params :
+                min_quantity = params['min_quantity']
+                amount = amount - amount % min_quantity
+
+                s_min = f"{min_quantity:f}".rstrip('0')
+                percision = len(str(s_min).split('.')[1])
+
+            symbol = asset + 'USDT'
+            quantity = round(amount, percision)
+            order_id = self.gen_client_order_id()
+            print('生成本地订单id={}, 卖出数量={}'.format(order_id, quantity))
+            info = self.place_order(symbol, OrderSide.SELL, OrderType.MARKET, quantity, 0, order_id, time_inforce=timeInForce.GTC)
+            print('打印下卖单结果...')
+            print(info)
+            return info
+        else :
+            print('异常：{}资产余额为0'.format(asset))
+        return None
+    
+    def buy_all(self, asset : str):
+        """
+        买入所有的某个币种
+        :param symbol: 交易对
+        :param price: 买入价格
+        :param quantity: 买入数量
+        :return:
+        """
+        #获取USDT余额
+        amount = self.get_balance('USDT')
+        if amount > 0:
+            #对买入数量进行步进处理
+            params = self.get_exchange_params(asset + 'USDT')
+            if params is not None and 'min_quantity' in params :
+                min_quantity = params['min_quantity']
+                amount = amount - amount % min_quantity
+
+            symbol = asset + 'USDT'
+            quantity = amount
+            order_id = self.gen_client_order_id()
+            print('生成本地订单id={}'.format(order_id))
+            info = self.place_order(symbol, OrderSide.BUY, OrderType.MARKET, quantity, 0, order_id, 
+                time_inforce=timeInForce.GTC, quoteOrderQty=130)
+            print('打印下买单结果...')
+            print(info)
+            return info
+        else :
+            print('异常：USDT资产余额为0')
+        return None

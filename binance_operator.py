@@ -20,30 +20,22 @@ import nacl.signing
 import nacl.encoding
 import base64
 
-DEFAULT_SYMBOL = 'BTCUSDT'
-
-api_key = 'XYCWi1jlDJcOPG8MltM0plnPQlmqFd0wuvCKVuokovxlmwXBADoCI7Ea78h6bX2Y'
-api_secret = 'your_api_secret'
-
-#B_PRI_KEY = 'MC4CAQAwBQYDK2VwBCIEIIbtaS8/ONSmV+udv68Ws/nRyvuBYor8XQHsRzgYO0x8'
+class binance_operator:
+    def __init__(self) :
+        self.cfg = config.Config()
+        return
+    def init(self) -> bool:
+        if not self.cfg.loads():
+            print('异常：加载配置文件{}失败。'.format(config.Config.CONFIG_FILE))
+            return False
+        return True
+    
 
 #比特币交易对BTCUSDT的最小交易量和最小价格
 #BTCUSDT minQty='0.00001000', minPrice='0.01000000'
 #假设7万一枚，买卖0.001枚，最小交易额是70美元
 
 def get_account_balance(pri_key : str):
-    cfg = config.Config()
-    cfg.loads(config.Config.CONFIG_FILE)
-    http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
-
-    infos = http_client.get_account_info()
-    balances = infos['balances']
-    for balance in balances:
-        if float(balance['free']) > 0 or float(balance['locked']) > 0:
-            print('balance={}'.format(balance))
-    return
-
-
     url = 'https://api.binance.com/api/v3/account'
     headers = {'X-MBX-APIKEY': api_key}
 
@@ -70,8 +62,7 @@ def get_account_balance(pri_key : str):
         balances = account_info['balances']
         for balance in balances:
             if float(balance['free']) > 0 or float(balance['locked']) > 0:
-                print('balance={}'.format(balance))
-                #print(f"Asset: {balance['asset']}, Free: {balance['free']}, Locked: {balance['locked']}")
+                print(f"Asset: {balance['asset']}, Free: {balance['free']}, Locked: {balance['locked']}")
     else:
         print(f"Error: {response.status_code}")
 
@@ -113,15 +104,12 @@ def test_balance(ACCOUNT = False):
     cfg = config.Config()
     cfg.loads(config.Config.CONFIG_FILE)
     if not ACCOUNT :
+        #get_account_balance(cfg.private_key)
         get_depth(cfg.private_key, 'BTCUSDT', 5)
-        http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
-        depth = http_client.get_order_book('BTCUSDT', 5)
-        print(depth)
     else :
         http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
         infos = http_client.get_account_info()
         if infos is not None :
-            assert(isinstance(infos, dict))
             for item in infos['balances']:
                 if float(item['free']) > 0  or float(item['locked']) > 0:
                     print(f"Asset: {item['asset']}, Free: {item['free']}, Locked: {item['locked']}")
@@ -133,13 +121,8 @@ def test_exchange_info() :
     cfg = config.Config()
     cfg.loads(config.Config.CONFIG_FILE)
     http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
-    params = http_client.get_exchange_params(DEFAULT_SYMBOL)
-    print('params={}'.format(params))
-    min_quantity = params['min_quantity']
-    str_min = format(min_quantity, 'f')
-    print('str_min={}'.format(str_min))
-    print('min_quantity={:.6f}, ={}'.format(min_quantity, str_min))
-
+    exchange_info = http_client.get_exchange_info('BTCUSDT')
+    print(exchange_info)
     return
 
 def test_last_price_overview() :
@@ -163,11 +146,7 @@ def test_get_orders() :
     cfg.loads(config.Config.CONFIG_FILE)
     http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
     orders = http_client.get_open_orders('BTCUSDT')
-    if isinstance(orders, list) :
-        print('当前挂单数量={}'.format(len(orders)))
-        print(orders)
-    else :
-        assert(False)
+    print(orders)
     return
 
 #下市价买单
@@ -175,10 +154,6 @@ def test_buy(amount : float = 0.001) :
     cfg = config.Config()
     cfg.loads(config.Config.CONFIG_FILE)
     http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
-    http_client.buy_all('BTC')
-    return
-
-
     order_id = http_client.gen_client_order_id()
     print('生成本地订单id={}'.format(order_id))
     info = http_client.place_order('BTCUSDT', bs.OrderSide.BUY, bs.OrderType.MARKET, amount, 0, order_id, bs.timeInForce.GTC)
@@ -190,14 +165,7 @@ def test_buy(amount : float = 0.001) :
 def test_sell(price : float, amount : float) :
     cfg = config.Config()
     cfg.loads(config.Config.CONFIG_FILE)
-    prec = cfg.general.get_qty_precision()
-    print('prec={}'.format(prec))
-
     http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
-    http_client.sell_all('BTC')
-    return
-
-
     order_id = http_client.gen_client_order_id()
     print('生成本地订单id={}'.format(order_id))
     info = http_client.place_order('BTCUSDT', bs.OrderSide.SELL, bs.OrderType.LIMIT, amount, price, order_id, bs.timeInForce.GTC)
@@ -214,61 +182,22 @@ def test_cancel_order(order_id : str) :
     print(info)
     return
 
-def test_cancel_all_orders() :
-    cfg = config.Config()
-    cfg.loads(config.Config.CONFIG_FILE)
-    http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
-    orders = http_client.cancel_open_orders('BTCUSDT')
-    if isinstance(orders, list) :
-        print('取消所有挂单数量（列表）={}'.format(len(orders)))
-        print(orders)
-    elif isinstance(orders, dict) :
-        print('取消所有挂单数量（字典）={}'.format(len(orders)))
-    elif orders is None :
-        print('取消所有挂单数量=0')
-    else :
-        print(type(orders))
-        assert(False)
-    return
-
 def test_account_balance():
     cfg = config.Config()
     cfg.loads(config.Config.CONFIG_FILE)
     get_account_balance(cfg.private_key)
     return
 
-def test_klines():
-    cfg = config.Config()
-    cfg.loads(config.Config.CONFIG_FILE)
-    http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
-    klines = http_client.get_kline('BTCUSDT', bs.Interval.MINUTE_1)
-    print(klines)
-    return
-
-def test_time():
-    cfg = config.Config()
-    cfg.loads(config.Config.CONFIG_FILE)
-    http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
-    server_time = http_client.get_server_time()
-    print(server_time)
-    if server_time is not None :
-        if 'serverTime' in server_time :
-            server_time = server_time['serverTime']
-            print('服务器时间={}={}'.format(server_time, utility.timestamp_to_string(server_time)))
-    return
-
-#test_depth()                       #获取交易深度
-test_account_balance()             #获取账户余额
+test_depth()                       #获取交易深度
+#test_account_balance()             #获取账户余额
 #获取账户余额或交易深度, 当ACCOUNT=False时等同于test_depth(), 当ACCOUNT=True时等同于test_account_balance()
 #test_balance(ACCOUNT=False)        
 #test_exchange_info()               #获取交易对元信息
 #test_last_price_overview()         #获取最新价格OVERVIEW
 #test_get_ticker()                  #获取最新价格详情
 #test_get_orders()                  #获取当前挂单
-#test_cancel_all_orders()           #取消所有挂单
-#test_buy(0.0008)                          #下单买入
+
+#test_buy(0.001)                          #下单买入
 #test_sell(68900, 0.00099)             #下单卖出
 
 #test_cancel_order('x-A6SIDXVS17307764878541000001')        #取消订单
-#test_klines()                       #获取K线数据
-#test_time()
