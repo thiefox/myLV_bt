@@ -321,6 +321,7 @@ class BinanceSpotHttp(object):
         'symbol': 'BTCUSDT', 'bidPrice': '9168.50000000', 'bidQty': '1.27689900',
         'askPrice': '9168.51000000', 'askQty': '0.93307800'
         }
+        bid为买价，最高买价。ask为卖价，最低卖价。
         """
         # 获取当前最优的挂单(最高买单,最低卖单)
         path = "/api/v3/ticker/bookTicker"
@@ -517,7 +518,8 @@ class BinanceSpotHttp(object):
                     return float(balance['free'])
         return 0.0
     
-    def sell_all(self, asset : str):
+    #amount=0表示清仓卖出
+    def sell_market(self, asset : str, amount : float= 0) -> dict:
         """
         卖出所有的某个币种
         :param symbol: 交易对
@@ -525,8 +527,9 @@ class BinanceSpotHttp(object):
         :param quantity: 卖出数量
         :return:
         """
-
-        amount = self.get_balance(asset)
+        remaining = self.get_balance(asset)
+        if amount == 0 :
+            amount = remaining
         if amount > 0:
             #对卖出数量进行步进处理
             params = self.get_exchange_params(asset + 'USDT')
@@ -536,6 +539,13 @@ class BinanceSpotHttp(object):
 
                 s_min = f"{min_quantity:f}".rstrip('0')
                 percision = len(str(s_min).split('.')[1])
+                print('最小数量小数位数={}'.format(percision))
+                if amount < min_quantity:
+                    print('异常：{}已有数量={:f}({})小于最小卖出数量={:f}({})，交易取消。'.format(asset, remaining, remaining, min_quantity, min_quantity))
+                    return None
+            else :
+                print('异常：sell_market未取到最小交易数量参数。')
+                return None
 
             symbol = asset + 'USDT'
             quantity = round(amount, percision)
@@ -549,7 +559,8 @@ class BinanceSpotHttp(object):
             print('异常：{}资产余额为0'.format(asset))
         return None
     
-    def buy_all(self, asset : str):
+    #amount=0表示满仓买入
+    def buy_market(self, asset : str, amount : float=0) -> dict:
         """
         买入所有的某个币种
         :param symbol: 交易对
@@ -558,20 +569,28 @@ class BinanceSpotHttp(object):
         :return:
         """
         #获取USDT余额
-        amount = self.get_balance('USDT')
-        if amount > 0:
+        balance = int(self.get_balance('USDT'))
+        if balance > 0:
+            print('USDT余额={}'.format(balance))
             #对买入数量进行步进处理
             params = self.get_exchange_params(asset + 'USDT')
             if params is not None and 'min_quantity' in params :
                 min_quantity = params['min_quantity']
-                amount = amount - amount % min_quantity
+                if amount > 0:
+                    amount = amount - amount % min_quantity
+                    assert(amount >= min_quantity)
+            else :
+                print('异常：buy_market未取到最小交易数量参数。')
+                return None
 
             symbol = asset + 'USDT'
-            quantity = amount
+            #quantity = balance
             order_id = self.gen_client_order_id()
             print('生成本地订单id={}'.format(order_id))
-            info = self.place_order(symbol, OrderSide.BUY, OrderType.MARKET, quantity, 0, order_id, 
-                time_inforce=timeInForce.GTC, quoteOrderQty=130)
+            if amount > 0 :
+                balance = 0
+            info = self.place_order(symbol, OrderSide.BUY, OrderType.MARKET, amount, 0, order_id, 
+                time_inforce=timeInForce.GTC, quoteOrderQty=balance)
             print('打印下买单结果...')
             print(info)
             return info

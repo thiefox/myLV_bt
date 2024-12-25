@@ -155,7 +155,12 @@ def test_get_ticker() :
     cfg.loads(config.Config.CONFIG_FILE)
     http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
     last_price = http_client.get_ticker('BTCUSDT')
-    print(last_price)
+    if last_price is not None :
+        buy_price = round(float(last_price['bidPrice']), 2)
+        buy_qty = float(last_price['bidQty'])
+        sell_price = round(float(last_price['askPrice']), 2)
+        sell_qty = float(last_price['askQty'])
+        print('买价（最高）={}, 买量={:.6f}, 卖价（最低）={}, 卖量={:.6f}'.format(buy_price, buy_qty, sell_price, sell_qty))
     return
 
 def test_get_orders() :
@@ -171,30 +176,31 @@ def test_get_orders() :
     return
 
 #下市价买单
-def test_buy(amount : float = 0.001) :
+#amount=0表示满仓买入
+def test_buy(amount : float = 0) :
     cfg = config.Config()
     cfg.loads(config.Config.CONFIG_FILE)
     http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
-    http_client.buy_all('BTC')
+    info = http_client.buy_market('BTC', amount=amount)
+    if info is not None :
+        test_account_balance()
+    else :
+        print('异常：下单买入失败')
     return
 
-
-    order_id = http_client.gen_client_order_id()
-    print('生成本地订单id={}'.format(order_id))
-    info = http_client.place_order('BTCUSDT', bs.OrderSide.BUY, bs.OrderType.MARKET, amount, 0, order_id, bs.timeInForce.GTC)
-    print('打印下买单结果...')
-    print(info)
-    return
-
-#下限价卖单
-def test_sell(price : float, amount : float) :
+#下市价卖单
+def test_sell(amount : float = 0) :
     cfg = config.Config()
     cfg.loads(config.Config.CONFIG_FILE)
     prec = cfg.general.get_qty_precision()
     print('prec={}'.format(prec))
 
     http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
-    http_client.sell_all('BTC')
+    info = http_client.sell_market('BTC', amount=amount)
+    if info is not None :
+        test_account_balance()
+    else :
+        print('异常：下单卖出失败')
     return
 
 
@@ -234,6 +240,7 @@ def test_cancel_all_orders() :
 def test_account_balance():
     cfg = config.Config()
     cfg.loads(config.Config.CONFIG_FILE)
+    print('开始获取账户余额...')
     get_account_balance(cfg.private_key)
     return
 
@@ -266,8 +273,8 @@ test_account_balance()             #获取账户余额
 #test_get_ticker()                  #获取最新价格详情
 #test_get_orders()                  #获取当前挂单
 #test_cancel_all_orders()           #取消所有挂单
-#test_buy(0.0008)                          #下单买入
-#test_sell(68900, 0.00099)             #下单卖出
+#test_buy(amount=0)                          #下单买入
+#test_sell(amount=0)             #下单卖出
 
 #test_cancel_order('x-A6SIDXVS17307764878541000001')        #取消订单
 #test_klines()                       #获取K线数据

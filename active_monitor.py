@@ -40,12 +40,6 @@ class active_monitor() :
     def _get_client(self) -> bs.BinanceSpotHttp:
         return bs.BinanceSpotHttp(api_key=self.config.api_key, private_key=self.config.private_key)
 
-    #清仓卖出
-    def _sell_all(self) :
-        client = self._get_client()
-        
-        return
-
     def _prepare(self) -> bool:
         http_client = bs.BinanceSpotHttp(api_key=self.config.api_key, private_key=self.config.private_key)        
         params = http_client.get_exchange_params(self.symbol.value)
