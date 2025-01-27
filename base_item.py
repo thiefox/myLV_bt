@@ -116,21 +116,6 @@ class save_unit() :
             assert(False)
             pass
         return begin
-    #取得一个文件里的记录数
-    def items_per_file(self, year : int = 0, month : int = 0) -> int :
-        items = 0
-        if self.multiple > 0 :
-            items = self.multiple
-        else :
-            UNIT = self.interval.get_unit()
-            if UNIT == 'm':
-                items = 60
-            elif UNIT == 'h':
-                items = 24
-            elif UNIT == 'd':
-                assert(year > 0 and month > 0)
-                items = utility.days_in_month(year, month)
-        return items
     #判断是否同一保存周期（同一数据文件）
     #base: 基准时间戳，毫秒级（注：base不一定为周期的开始）
     #如self.multiple>0，则base必须为周期的开始时间戳
@@ -147,13 +132,13 @@ class save_unit() :
         assert(check >= begin)
         if check < begin :
             return False
-        win = self.get_unit_seconds(begin) * 1000
+        win = self.get_unit_seconds(utility.timestamp_to_datetime(begin)) * 1000
         diff = win - (check - begin)
-        print('重要：base={}, begin={}, check={}, HEADER={}, WIN={}, diff={}'.format(base, begin, check, HEADER, win, diff))
+        #print('重要：base={}, begin={}, check={}, HEADER={}, WIN={}, diff={}'.format(base, begin, check, HEADER, win, diff))
         s_begin = utility.timestamp_to_string(begin)
         s_base = utility.timestamp_to_string(base)
         s_check = utility.timestamp_to_string(check)
-        print('重要：begin时间={}, base时间={}, check时间={}'.format(s_begin, s_base, s_check))
+        #print('重要：begin时间={}, base时间={}, check时间={}'.format(s_begin, s_base, s_check))
         return diff > 0 if HEADER else diff >= 0
     #获取保存的末级目录单位
     def get_save_dir(self, begin : datetime) -> str :
@@ -201,9 +186,6 @@ class save_unit() :
             offset = begin + count * self.interval.get_interval_seconds() * 1000
         assert(offset > 0)
         return offset
-
-
-            
 
 class trade_symbol(str, Enum):
     BTCUSDT = 'BTCUSDT'

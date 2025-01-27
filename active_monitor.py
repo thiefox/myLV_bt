@@ -1,7 +1,7 @@
 import sys
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from utils import utility
 from utils import log_adapter
@@ -21,6 +21,12 @@ class active_monitor() :
     def __init__(self, su : base_item.save_unit) :
         self.__su = su
         self.symbol = base_item.trade_symbol.BTCUSDT
+        ONE_HOUR_SECONDS = 60 * 60
+        EIGHT_HOURS_SECONDS = ONE_HOUR_SECONDS * 8
+        ONE_DAY_SECONDS = 60 * 60 * 24
+        TEN_YEARS_SECONDS = ONE_DAY_SECONDS * 365 * 10
+        self.MONITOR_SECONDS = ONE_HOUR_SECONDS * 4
+        self.monitor_begin = datetime.min
         
         last_handled = 0
         self.config = config.Config()
@@ -51,8 +57,8 @@ class active_monitor() :
         else:
             print('异常：获取minQty和minPrice交易参数失败。')
             return False
-
         offset = self.__su.calc_offset(DEFAULT_BACK_COUNT)
+        print('开始获取{}条历史K线数据，开始时间戳={}'.format(DEFAULT_BACK_COUNT, offset))
         assert(offset > 0)
         klines = kline_spider.get_klines(base_item.trade_symbol.BTCUSDT, self.__su.interval, offset)
         if len(klines) == 0:
@@ -67,15 +73,35 @@ class active_monitor() :
         return info >= self.processor.WINDOW_LENGTH
     def _finish(self) :
         return
+    #是否需要退出
+    def _need_exit(self) -> bool:
+        now = datetime.now()
+        delta = now - self.monitor_begin
+        if delta.total_seconds() >= self.MONITOR_SECONDS:
+            print('重要：开始时间={}，当前时间={}，达到结束时间，退出。'.format(datetime.strftime(self.monitor_begin, '%Y-%m-%d %H-%M-%S'), 
+                datetime.strftime(now, '%Y-%m-%d %H-%M-%S')))
+            return True
+        return False
+    #获取剩余的监控时间
+    def _get_remain_seconds(self) -> timedelta:
+        now = datetime.now()
+        delta = now - self.monitor_begin
+        if self.MONITOR_SECONDS >= delta.total_seconds() :
+            return timedelta(seconds=self.MONITOR_SECONDS - delta.total_seconds())
+        else :
+            return timedelta(seconds=0)
     def _monitor(self) :
         print('minotor开始...')
+        self.monitor_begin = datetime.now()
+
         begin = self.processor.get_time_begin(-1)
         end = self.processor.get_time_end(-1)
         print('最后一条K线的开始时间={}, 结束时间={}'.format(utility.timestamp_to_string(begin), utility.timestamp_to_string(end)))
         cur = 0
-        count = 100
         while True:
-            print('获取实时K线数据，count={}'.format(count))
+            remains = self._get_remain_seconds()
+            text = "%d天 %d小时 %d分钟" % (remains.days, remains.seconds // 3600, (remains.seconds // 60) % 60)     
+            print('---获取实时K线数据，当前时间={}，剩余运行时间={}...'.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), text))
             now = datetime.now().timestamp() * 1000
             if now < end:
                 cur = begin
@@ -83,7 +109,7 @@ class active_monitor() :
                 cur = end + 1
             klines = kline_spider.get_klines(self.symbol, self.__su.interval, cur, 1)
             if len(klines) == 0:
-                print('获取实时K线数据失败')
+                print('异常：获取实时K线数据失败。')
                 continue
             print('重要：获取到实时K线数据记录={}'.format(len(klines)))
             assert(len(klines) == 1)
@@ -101,16 +127,23 @@ class active_monitor() :
                 assert(status == base_item.TRADE_STATUS.IGNORE)
                 print('忽略该K线(无交叉)，开始时间={}({})'.format(begin_time, utility.timestamp_to_string(begin_time)))
                 pass
-            if count > 0:
-                count -= 1
-                if count == 0:
-                    break            
+            if self._need_exit() :
+                break            
             time.sleep(60)
-        print('minotor结束, count={}.'.format(count))
+        monitor_end = datetime.now()
+
+        print('重要：minotor结束, 开始时间={}，结束时间={}。'.format(datetime.strftime(self.monitor_begin, '%Y-%m-%d %H-%M-%S'), 
+            datetime.strftime(monitor_end, '%Y-%m-%d %H-%M-%S')))
+        delta = monitor_end - self.monitor_begin
+        text = "%d天 %d小时 %d分钟" % (delta.days, delta.seconds // 3600, (delta.seconds // 60) % 60)        
+        print('重要：minotor结束, 运行时长={}。'.format(text))
+        self.monitor_begin = datetime.min
+        #self.config.save()
         return
     def run(self) :
         if not self._prepare():
             return
+        time.sleep(1)
         self._monitor()
         self._finish()
         return
@@ -144,4 +177,5 @@ def test() :
     print("Active Monitor End.")
     return
 
+#目前采用的币安监控处理器
 test()

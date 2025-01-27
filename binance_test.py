@@ -183,6 +183,7 @@ def test_buy(amount : float = 0) :
     http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
     info = http_client.buy_market('BTC', amount=amount)
     if info is not None :
+        time.sleep(1)
         test_account_balance()
     else :
         print('异常：下单买入失败')
@@ -198,6 +199,7 @@ def test_sell(amount : float = 0) :
     http_client = BinanceSpotHttp(api_key=cfg.api_key, private_key=cfg.private_key)
     info = http_client.sell_market('BTC', amount=amount)
     if info is not None :
+        time.sleep(1)
         test_account_balance()
     else :
         print('异常：下单卖出失败')
@@ -279,3 +281,5 @@ test_account_balance()             #获取账户余额
 #test_cancel_order('x-A6SIDXVS17307764878541000001')        #取消订单
 #test_klines()                       #获取K线数据
 #test_time()
+
+#目前采用的币安监控处理器是active_monitor.py

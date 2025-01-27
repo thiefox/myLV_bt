@@ -136,6 +136,7 @@ def string_to_timestamp(str_date : str, ONLY_DATE = False) -> int:
 
 #获取一年的天数
 def days_in_year(year : int) -> int:
+    assert(year > 0)
     #是否闰年
     def is_leap_year(year : int) -> bool:
         return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
@@ -143,6 +144,7 @@ def days_in_year(year : int) -> int:
 
 #获取一个月的天数
 def days_in_month(year : int, month : int) -> int:
+    assert(month >= 1 and month <= 12)
     #是否闰年
     def is_leap_year(year : int) -> bool:
         return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
@@ -151,3 +153,8 @@ def days_in_month(year : int, month : int) -> int:
     if month == 2 and is_leap_year(year):
         return 29
     return month_days[month - 1]
+
+#判断某天是否当年当月的最后一天
+def is_last_day(year : int, month : int, day : int) -> bool:
+    assert(year > 0 and month >= 1 and month <= 12 and day >= 1 and day <= 31)
+    return day == days_in_month(year, month)

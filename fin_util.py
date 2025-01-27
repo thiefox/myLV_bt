@@ -20,9 +20,14 @@ def get_kline_file_name(symbol : base_item.trade_symbol, su : base_item.save_uni
     return file_name
 
 #计算MACD交叉点, macd即为快线(DIF)，signal即为慢线(DEA)
-def find_macd_crossovers(macd : list, signal : list, hist : list) -> list:
+#如果ONLY_LAST为True，只计算最后一条数据是否有交叉点
+def find_macd_crossovers(macd : list, signal : list, hist : list, ONLY_LAST : bool = False) -> list:
     crossovers = []
-    for i in range(1, len(macd)):
+    if ONLY_LAST :
+        begin = len(macd) - 1
+    else :
+        begin = 1
+    for i in range(begin, len(macd)):
         if macd[i] > signal[i] and macd[i-1] < signal[i-1]:
             if macd[i] > 0 and signal[i] > 0 :  #0轴上金叉
                 crossovers.append((i, base_item.MACD_CROSS.GOLD_ZERO_UP, macd[i]-signal[i], macd[i-1]-signal[i-1]))

@@ -15,7 +15,7 @@ def get_kline_shape(kline : list) -> list:
     print('kline={}'.format(kline))
     assert(len(kline) == 12)
     '''
-    print('len(kline)={}'.format(len(kline)))
+    #print('len(kline)={}'.format(len(kline)))
     if len(kline) == 12:
         return [int(kline[0]), float(kline[1]), float(kline[2]), float(kline[3]), float(kline[4]), 
             float(kline[5]), int(kline[6]), float(kline[7]), int(kline[8]), float(kline[9]), float(kline[10]), float(kline[11])]
