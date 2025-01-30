@@ -84,21 +84,29 @@ class save_unit() :
     @property
     def multiple(self) -> int:
         return self.__multi
-    def get_unit_seconds(self, dt : datetime) -> int:
-        OMS = 60        #1分钟秒数
-        seconds = 0
+    #获取保存周期的满K线数量
+    def get_K_count(self, dt : datetime = None) -> int:
         UNIT = self.interval.get_unit()
-        delta = self.interval.get_delta()
         if self.multiple > 0 :
-            seconds = self.multiple * int(delta.total_seconds())
+            return self.multiple    #保存原单位(m/h/d)的倍数条K线
         else :
             if UNIT == 'm':     #分钟K线
-                seconds = OMS * 60      #默认保存单位为1小时
+                return 60       #保存单位为1小时(60分钟)
             elif UNIT == 'h':   #小时K线
-                seconds = OMS * 60 * 24      #默认保存单位为1天
+                return 24       #保存单位为1天(24小时)
             elif UNIT == 'd':   #日K线
-                seconds = OMS * 60 * 24 * utility.days_in_month(dt.year, dt.month)      #默认保存单位为1月
+                assert(dt is not None)
+                assert(isinstance(dt, datetime))
+                return utility.days_in_month(dt.year, dt.month)     #保存单位为所在月(28/29/30/31天)
+        return 0    
+    #获取保存周期的秒数，即一个保存周期里所有K线的总时长
+    #如日K线，则需要提供dt参数，以计算当月的天数
+    def get_unit_seconds(self, dt : datetime = None) -> int:
+        count = self.get_K_count(dt)
+        delta = self.interval.get_delta()
+        seconds = count * delta.total_seconds()
         return seconds
+
     #获取保存周期的（理论）开始时间戳，毫秒级
     #实际的数据不一定从这个时间开始，如第一条数据可能是2017-08-17 04:00:00
     #pos: 当前位置时间戳，毫秒级
@@ -116,6 +124,7 @@ class save_unit() :
             assert(False)
             pass
         return begin
+
     #判断是否同一保存周期（同一数据文件）
     #base: 基准时间戳，毫秒级（注：base不一定为周期的开始）
     #如self.multiple>0，则base必须为周期的开始时间戳
@@ -155,18 +164,18 @@ class save_unit() :
     def get_save_file(self, begin : datetime) -> str :
         file = ''
         UNIT = self.interval.get_unit()
-        if UNIT == 'm':
+        if UNIT == 'm':     #分钟K线
             if self.multiple == 0 :
                 file = '{}-{:0>2}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day, begin.hour, self.interval.value)
             else :
                 file = '{}-{:0>2}-{:0>2}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day,
                     begin.hour, begin.minute, self.interval.value)
-        elif UNIT == 'h':
+        elif UNIT == 'h':   #小时K线
             if self.multiple == 0 :
                 file = '{}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day, self.interval.value)
             else :
                 file = '{}-{:0>2}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day, begin.hour, self.interval.value)
-        elif UNIT == 'd':
+        elif UNIT == 'd':   #日K线
             if self.multiple == 0 :
                 file = '{}-{:0>2}-{}.json'.format(begin.year, begin.month, self.interval.value)
             else :

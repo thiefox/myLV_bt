@@ -5,6 +5,9 @@ import copy
 from pandas import DataFrame, Series
 from datetime import datetime
 
+from utils import utility
+from utils import log_adapter
+
 import base_item
 
 def get_kline_file_name(symbol : base_item.trade_symbol, su : base_item.save_unit, dt : datetime, DIR_MUST_EXISTS=False) -> str:
@@ -202,7 +205,12 @@ def check_time_continuity(dates: list, inter : base_item.kline_interval) -> bool
         return True
     for i in range(1, len(dates)):
         if (dates[i] - dates[i-1])/1000 != inter.get_interval_seconds():
-            print('异常：时间戳{}和{}之间的时间间隔不是{}秒'.format(dates[i-1], dates[i], inter.get_interval_seconds()))
+            ts1 = utility.timestamp_to_string(dates[i-1])
+            ts2 = utility.timestamp_to_string(dates[i])
+            diff_seconds = int((dates[i] - dates[i-1])/1000)
+            log_adapter.color_print('异常：上一条时间戳{}=({})和当前{}=({})之间的时间间隔={}不是{}秒'.format(dates[i-1], ts1,
+                dates[i], ts2, diff_seconds, inter.get_interval_seconds()), log_adapter.COLOR.RED)
+            log_adapter.color_print('异常：总记录数={}, 当前记录数={}'.format(len(dates), i), log_adapter.COLOR.RED)
             return False
     return True
     
