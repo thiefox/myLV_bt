@@ -64,18 +64,43 @@ def load_klines_range(symbol: trade_symbol, su: save_unit, begin_t: datetime, en
         assert(full > 0)
         klines = _load_klines(symbol, su, utility.timestamp_to_datetime(current))
         if len(klines) > 0 :
+            first_begin = int(klines[0][0])
+            last_begin = int(klines[-1][0])
+            log_adapter.color_print('通知：开始={}，获取到{}条K线数据，第一条记录开始时间={}，最后一条记录开始时间={}。'.format(s_current, len(klines), 
+                utility.timestamp_to_string(first_begin), utility.timestamp_to_string(last_begin)), log_adapter.COLOR.GREEN)
+        match_begin = match_end = -1
+        for i in range(len(klines)):
+            if int(klines[i][0]) <= current and int(klines[i][6]) > current :
+                if match_begin < 0:
+                    match_begin = i
+            elif int(klines[i][0]) >= end :
+                if match_end < 0:
+                    match_end = i
+        if match_begin >= 0:
+            log_adapter.color_print('重要：begin={}，共获取到{}条K线，实际数据从{}开始，到{}结束。'.format(s_current,
+                len(klines), match_begin, match_end), log_adapter.COLOR.YELLOW)
+        else :
+            log_adapter.color_print('异常：begin={}，获取到的{}条K线都未匹配时间戳。'.format(s_current, len(klines)), log_adapter.COLOR.RED)
+        if match_begin >= 0:
+            if match_end >= 0:
+                klines = klines[match_begin:match_end]
+            else :
+                klines = klines[match_begin:]
+        else :
+            klines = list()
+
+        log_adapter.color_print('重要：begin={}，修正后的K线数据={}，full={}。'.format(s_current, len(klines), full), log_adapter.COLOR.YELLOW)
+        end_time = 0
+        if len(klines) > 0 :
             assert(len(klines) <= full)
+            for i in range(len(klines)):
+                start_time = int(klines[i][0])
+                if start_time == current :
+                    break
+
+            DIFF_SECONDS = int(su.interval.get_delta().total_seconds() * len(klines))
             start_time = int(klines[0][0])
             end_time = int(klines[-1][6])
-            DIFF_SECONDS = su.interval.get_delta().total_seconds() * len(klines)
-            if len(all_klines) == 0 :   #第一次
-                if len(klines) == full:
-                    assert(start_time == current)
-                assert(end_time == current + DIFF_SECONDS * 1000 - 1)
-            else :
-                assert(start_time == current)
-                if len(klines) == full:
-                    assert(end_time == current + DIFF_SECONDS * 1000 - 1)
 
             if end_time + 1 - start_time != DIFF_SECONDS * 1000:
                 log_adapter.color_print('异常：开始={}，获取K线数据={}，full={}，时间连续性检查失败。'.format(s_current, 
@@ -85,20 +110,16 @@ def load_klines_range(symbol: trade_symbol, su: save_unit, begin_t: datetime, en
                 assert(False)
                 all_klines.clear()
                 break
-            if len(klines) == full:
-                assert(start_time == current)
-                all_klines.extend(klines)
-            else :
-                all_klines.extend(klines)
-                log_adapter.color_print('重要：开始={}，获取K线数据={}，小于full={}，提前结束。'.format(s_current, len(klines), full),
-                    log_adapter.COLOR.YELLOW)
-                break
+            all_klines.extend(klines)
         else :
             log_adapter.color_print('异常：未获取到开始={}的K线数据，已有{}条数据清零。'.format(s_current, len(all_klines)), log_adapter.COLOR.RED)
-            all_klines.clear()
+            #all_klines.clear()
             break
-        current += int(FULL_SECONDS * 1000)
-        cn += 1
+        if end_time > 0 :
+            current = end_time + 1
+            cn += 1
+        else :
+            break
 
     return all_klines
 
@@ -169,4 +190,4 @@ def test() :
         log_adapter.color_print('异常：K线数据时间连续性检查失败', log_adapter.COLOR.RED)
     return
 
-test()
+#test()

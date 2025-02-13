@@ -10,6 +10,7 @@ from utils import config
 import base_item
 import kline_spider
 import MACD_process
+import data_loader
 
 #from binance import BinanceSpotHttp
 #from binance import authentication
@@ -45,31 +46,55 @@ class active_monitor() :
     
     def _get_client(self) -> bs.BinanceSpotHttp:
         return bs.BinanceSpotHttp(api_key=self.config.api_key, private_key=self.config.private_key)
-
-    def _prepare(self) -> bool:
+    #在线模式加载历史数据
+    def _prepare_online(self) -> bool:
         http_client = bs.BinanceSpotHttp(api_key=self.config.api_key, private_key=self.config.private_key)        
         params = http_client.get_exchange_params(self.symbol.value)
         if params is None:
-            print('异常：获取交易对参数失败。')
+            log_adapter.color_print('异常：获取交易对参数失败。', log_adapter.COLOR.RED)
             return False
         if 'min_quantity' in params and 'min_price' in params:
             self.config.update_exchange_info(self.symbol.value, params['min_price'], params['min_quantity'])
         else:
-            print('异常：获取minQty和minPrice交易参数失败。')
+            log_adapter.color_print('异常：获取minQty和minPrice交易参数失败。', log_adapter.COLOR.RED)
             return False
-        offset = self.__su.calc_offset(DEFAULT_BACK_COUNT)
-        print('开始获取{}条历史K线数据，开始时间戳={}'.format(DEFAULT_BACK_COUNT, offset))
+        begin = int(datetime.now().timestamp()) * 1000
+        offset = self.__su.calc_offset(DEFAULT_BACK_COUNT, begin)
         assert(offset > 0)
+        log_adapter.color_print('重要：开始在线获取{}条历史K线数据，开始时间戳={}，结束时间戳={}'.format(DEFAULT_BACK_COUNT,
+            utility.timestamp_to_string(offset), utility.timestamp_to_string(begin)), log_adapter.COLOR.GREEN)
         klines = kline_spider.get_klines(base_item.trade_symbol.BTCUSDT, self.__su.interval, offset)
         if len(klines) == 0:
-            print('获取历史K线数据失败')
+            log_adapter.color_print('异常：在线获取历史K线数据失败', log_adapter.COLOR.RED)
             return False
-        print('重要：初始化共获取到K线数据记录={}，DEF_BACK_CN={}'.format(len(klines), DEFAULT_BACK_COUNT))
+        log_adapter.color_print('重要：在线初始化共获取到K线数据记录={}，BACK_CN={}'.format(len(klines), DEFAULT_BACK_COUNT), log_adapter.COLOR.GREEN)
         if len(klines) < DEFAULT_BACK_COUNT:
-            print('异常：获取到的历史K线数据记录数少于{}'.format(DEFAULT_BACK_COUNT))
+            log_adapter.color_print('异常：在线获取到的历史K线数据记录数少于{}'.format(DEFAULT_BACK_COUNT), log_adapter.COLOR.RED)
             return False
         info = self.processor.init_history(klines)
-        print('重要：初始化历史数据结果={}'.format(info))
+        log_adapter.color_print('重要：在线初始化历史数据结果={}'.format(info), log_adapter.COLOR.GREEN)
+        return info >= self.processor.WINDOW_LENGTH
+    #离线模式加载历史数据
+    #end: 0表示不指定结束时间，否则表示指定的结束时间
+    def _prepare_offline(self, end : int = 0) -> bool:
+        if end == 0 :
+            end = self.__su.interval.get_K_begin()
+        offset = self.__su.calc_offset(DEFAULT_BACK_COUNT, end)
+        assert(offset > 0)
+        log_adapter.color_print('重要：开始离线获取{}条历史K线数据，开始时间戳={}，结束时间戳={}'.format(DEFAULT_BACK_COUNT, 
+            utility.timestamp_to_string(offset), utility.timestamp_to_string(end)), log_adapter.COLOR.GREEN)
+        
+        klines = data_loader.load_klines_range(base_item.trade_symbol.BTCUSDT, self.__su,
+            utility.timestamp_to_datetime(offset), utility.timestamp_to_datetime(end))
+        if len(klines) == 0:
+            log_adapter.color_print('异常：离线获取历史K线数据失败', log_adapter.COLOR.RED)
+            return False
+        log_adapter.color_print('重要：离线初始化共获取到K线数据记录={}，BACK_CN={}'.format(len(klines), DEFAULT_BACK_COUNT), log_adapter.COLOR.GREEN)
+        if len(klines) < DEFAULT_BACK_COUNT:
+            log_adapter.color_print('异常：离线获取到的历史K线数据记录数少于{}'.format(DEFAULT_BACK_COUNT), log_adapter.COLOR.RED)
+            return False
+        info = self.processor.init_history(klines)
+        log_adapter.color_print('重要：离线初始化历史数据结果={}'.format(info), log_adapter.COLOR.GREEN)
         return info >= self.processor.WINDOW_LENGTH
     def _finish(self) :
         return
@@ -90,13 +115,20 @@ class active_monitor() :
             return timedelta(seconds=self.MONITOR_SECONDS - delta.total_seconds())
         else :
             return timedelta(seconds=0)
+    def print_kline(self, index : int) :
+        s_begin = utility.timestamp_to_string(self.processor.get_time_begin(index))
+        s_end = utility.timestamp_to_string(self.processor.get_time_end(index))
+        open_price = self.processor.get_price_open(index)
+        close_price = self.processor.get_price_close(index)
+        log_adapter.color_print('K线总数={}，K线序号={}，开始时间={}，结束时间={}，开盘价={}，收盘价={}'.format(self.processor.len, index, 
+            s_begin, s_end, open_price, close_price), log_adapter.COLOR.GREEN)
     def _monitor(self) :
         print('minotor开始...')
         self.monitor_begin = datetime.now()
 
+        self.print_kline(-1)
         begin = self.processor.get_time_begin(-1)
         end = self.processor.get_time_end(-1)
-        print('最后一条K线的开始时间={}, 结束时间={}'.format(utility.timestamp_to_string(begin), utility.timestamp_to_string(end)))
         cur = 0
         while True:
             remains = self._get_remain_seconds()
@@ -125,7 +157,7 @@ class active_monitor() :
                 print('重要：K线开始时间={}({})，发生交叉但已被处理过，忽略。'.format(timeinfo, utility.timestamp_to_string(timeinfo)))
             else :
                 assert(status == base_item.TRADE_STATUS.IGNORE)
-                print('忽略该K线(无交叉)，开始时间={}({})'.format(begin_time, utility.timestamp_to_string(begin_time)))
+                print('通知：忽略该K线(无交叉)，开始时间={}({})'.format(begin_time, utility.timestamp_to_string(begin_time)))
                 pass
             if self._need_exit() :
                 break            
@@ -140,14 +172,89 @@ class active_monitor() :
         self.monitor_begin = datetime.min
         #self.config.save()
         return
+    #本地模拟的监控处理，用于观察发生交叉点的后续处理是否正常
+    def _fake_monitor(self, attack_su : base_item.save_unit, begin : int = 0) :
+        log_adapter.color_print('fake minotor开始...', log_adapter.COLOR.GREEN)
+        self.print_kline(-1)
+        if begin == 0 :
+            begin = self.processor.get_time_end(-1) + 1
+            #begin = attack_su.get_unit_begin()
+        assert(isinstance(begin, int))
+
+        self_k_begin = self.__su.interval.get_K_begin()
+        attack_k_begin = attack_su.interval.get_K_begin()
+        log_adapter.color_print('self_k_begin={}，attack_k_begin={}...'.format(utility.timestamp_to_string(self_k_begin),
+            utility.timestamp_to_string(attack_k_begin)), log_adapter.COLOR.GREEN)
+
+        end = begin + attack_su.get_unit_seconds() * 1000
+        assert(isinstance(end, int))
+        log_adapter.color_print('begin={}，end={}...'.format(utility.timestamp_to_string(begin),
+            utility.timestamp_to_string(end)), log_adapter.COLOR.GREEN)
+
+        klines = data_loader.load_klines_range(base_item.trade_symbol.BTCUSDT, attack_su,
+            utility.timestamp_to_datetime(begin), utility.timestamp_to_datetime(end))
+        if len(klines) == 0:
+            log_adapter.color_print('异常：离线获取下级单位的增量K线数据失败。', log_adapter.COLOR.RED)
+            return
+        log_adapter.color_print('重要：离线获取下级单位，共获取到K线数据记录={}'.format(len(klines)), log_adapter.COLOR.GREEN)
+
+        FIXED_BEGIN_TIMESTAMP = FIXED_END_TIMESTAMP = 0
+        if len(klines) > 0 :
+            begin_time = int(klines[0][0])
+            FIXED_BEGIN_TIMESTAMP = begin_time
+            FIXED_END_TIMESTAMP = int(self.__su.interval.get_delta().total_seconds()) * 1000 + begin_time
+            end_time = int(klines[0][6])
+            log_adapter.color_print('重要：第一条K线的开始时间={}，结束时间={}。'.format(utility.timestamp_to_string(begin_time),
+                utility.timestamp_to_string(end_time)), log_adapter.COLOR.GREEN)
+            begin_time = int(klines[-1][0])
+            end_time = int(klines[-1][6])
+            log_adapter.color_print('重要：最后一条K线的开始时间={}，结束时间={}。'.format(utility.timestamp_to_string(begin_time),
+                utility.timestamp_to_string(end_time)), log_adapter.COLOR.GREEN)
+
+        log_adapter.color_print('重要：固定开始时间={}，固定结束时间={}。'.format(utility.timestamp_to_string(FIXED_BEGIN_TIMESTAMP),
+            utility.timestamp_to_string(FIXED_END_TIMESTAMP)), log_adapter.COLOR.RED)
+
+        for kline in klines :
+            kline[0] = FIXED_BEGIN_TIMESTAMP
+            kline[6] = FIXED_END_TIMESTAMP
+
+            begin_time = int(kline[0])
+            end_time = int(kline[6])
+
+            cross, status, timeinfo = self.processor.update_kline(list(kline))
+            if status == base_item.TRADE_STATUS.BUY or status == base_item.TRADE_STATUS.SELL:
+                assert(timeinfo == begin_time)
+                log_adapter.color_print('重要：发生交易处理，status={}，cross={}，开始时间={}({})，结束时间={}'.format(status, cross,
+                    timeinfo, utility.timestamp_to_string(timeinfo), utility.timestamp_to_string(end_time)), log_adapter.COLOR.GREEN)
+                self.config.update_macd(self.symbol, self.__su.interval, utility.timestamp_to_string(timeinfo))
+            elif status == base_item.TRADE_STATUS.HANDLED :
+                assert(timeinfo == begin_time)
+                log_adapter.color_print('重要：K线开始时间={}({})，发生交叉但已被处理过，忽略。'.format(timeinfo, 
+                    utility.timestamp_to_string(timeinfo)), log_adapter.COLOR.YELLOW) 
+            else :
+                assert(status == base_item.TRADE_STATUS.IGNORE)
+                print('通知：忽略该K线(无交叉)，开始时间={}({})，结束时间={}'.format(begin_time,
+                    utility.timestamp_to_string(begin_time), utility.timestamp_to_string(end_time)))
+                pass
+        log_adapter.color_print('重要：fake minotor结束。', log_adapter.COLOR.GREEN)
+        return
     def run(self) :
-        if not self._prepare():
+        if not self._prepare_online():
             return
         time.sleep(1)
         self._monitor()
         self._finish()
         return
-
+    def fake_run(self) : 
+        #HISTORY_END为最后一条K线的结束时间
+        HISTORY_END = datetime(2025, 2, 5, 0, 0, 0)
+        end = int(HISTORY_END.timestamp()) * 1000
+        if not self._prepare_offline(end) :
+            return
+        time.sleep(1)
+        self._fake_monitor(base_item.save_unit(base_item.kline_interval.h1))
+        self._finish()
+        return
 
 def test() :
     print("Active Monitor Start...")
@@ -169,7 +276,8 @@ def test() :
 
     su = base_item.save_unit(base_item.kline_interval.d1)
     monitor = active_monitor(su)
-    monitor.run()
+    #monitor.run()
+    monitor.fake_run()
 
     if LOG_FLAG == 1 :
         sys.stdout = tmp_out

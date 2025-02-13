@@ -76,6 +76,7 @@ class MACD_processor():
         return len(self.__klines)
     #更新一条K线数据
     def update_kline(self, kline : list) -> tuple[base_item.MACD_CROSS, base_item.TRADE_STATUS, int]:
+        assert(isinstance(kline, list))
         kline = data_loader.get_kline_shape(kline)
         if len(self.__klines) > 0 :
             #print('update_kline, 头索引={}, 尾索引={}...'.format(self.__klines.index[0], self.__klines.index[-1]))
@@ -83,24 +84,23 @@ class MACD_processor():
         #print('{}'.format(self.__klines))
         if len(self.__klines) == 0 :    #第一条K线
             self.__klines.loc[0] = kline
-            print('重要：第一条K线，日期={}.'.format(utility.timestamp_to_string(kline[0], ONLY_DATE=True)))
+            print('重要：第一条K线，开始时间={}.'.format(utility.timestamp_to_string(kline[0])))
         else :
             last_begin = int(self.__klines.iloc[-1, 0])
             last_index = self.__klines.index[-1] 
             if last_begin == kline[0] : #开始时间戳相同->最后一条K线的更新
                 self.__klines.loc[last_index] = kline
-                print('重要：更新最后一条K线，日期={}，开始价={}，最新价={}.'.format(utility.timestamp_to_string(kline[0], ONLY_DATE=True), 
-                    round(self.__klines.loc[last_index, 'open'], 2), round(self.__klines.loc[last_index, 'close'], 2)))
-                    #round(kline[4], 2)))
+                log_adapter.color_print('重要：更新最后一条K线，开始时间={}，开盘价={}，最新价={}.'.format(utility.timestamp_to_string(kline[0]), 
+                    round(self.__klines.loc[last_index, 'open'], 2), round(self.__klines.loc[last_index, 'close'], 2)), log_adapter.COLOR.YELLOW)
             else :      #新增一条K线
                 self.__klines.loc[last_index+1] = kline
-                print('重要：新增一条K线，日期={}.'.format(utility.timestamp_to_string(kline[0], ONLY_DATE=True)))
+                log_adapter.color_print('重要：新增一条K线，开始时间={}.'.format(utility.timestamp_to_string(kline[0])), log_adapter.COLOR.YELLOW)
                 #保留最近的WINDOW_LENGTH条K线数据
                 if self.WINDOW_LENGTH > 0 and len(self.__klines) > self.WINDOW_LENGTH :
                     #self.__klines = self.__klines.iloc[-self.WINDOW_LENGTH:]
                     #删除第一条K线
                     self.__klines = self.__klines.drop(self.__klines.index[0])
-                    print('重要：弹出失效K线，剩余数量={}'.format(len(self.__klines)))
+                    log_adapter.color_print('重要：删除最早的一条K线，剩余数量={}'.format(len(self.__klines)), log_adapter.COLOR.YELLOW)
         if self.WINDOW_LENGTH > 0 :
             assert(len(self.__klines) <= self.WINDOW_LENGTH)
         #取得第一条K线的日期
@@ -128,6 +128,10 @@ class MACD_processor():
         return int(self.__klines.iloc[index, 0])
     def get_time_end(self, index : int) -> int:
         return int(self.__klines.iloc[index, 6])
+    def get_price_open(self, index : int) -> float:
+        return round(self.__klines.iloc[index, 1], 2)
+    def get_price_close(self, index : int) -> float:
+        return round(self.__klines.iloc[index, 4], 2)
     #挂出买单，返回挂单ID
     def __post_buying(self, amount : float, price : float) -> str:
         order_id = ''

@@ -293,7 +293,7 @@ def _spider_days() :
 
     su = save_unit(kline_interval.d1)
     #su = save_unit(kline_interval.m3, multiple=5)
-    for year in range(2017, 2026):
+    for year in range(2025, 2026):
         if save_klines(trade_symbol.BTCUSDT, su, year, 0, 0) :
             log_adapter.color_print('重要：获取并保存({}年)K线数据完成。'.format(year), log_adapter.COLOR.GREEN)
         else :
@@ -329,7 +329,7 @@ def _spider_hours() :
     #su = save_unit(kline_interval.m3, multiple=5)
 
     YEAR = 2025
-    for month in range(1, 2):
+    for month in range(1, 3):
         if save_klines(trade_symbol.BTCUSDT, su, YEAR, month, 0) :
             log_adapter.color_print('重要：获取并保存({}-{})K线数据完成。'.format(YEAR, month), log_adapter.COLOR.GREEN)
         else :

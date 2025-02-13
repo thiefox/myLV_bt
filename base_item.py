@@ -17,6 +17,17 @@ class kline_interval(str, Enum):
     h6 = '6h'
     h12 = '12h'
     d1 = '1d'
+    #获取周期单位
+    def get_unit(self) -> str:
+        return self.value[-1]
+    #获取周期数值
+    def get_value(self) -> int:
+        value = 0
+        try :
+            value = int(self.value[:-1])
+        except :
+            pass
+        return value    
     #获取周期数，秒为单位
     def get_interval_seconds(self) -> int:
         interval = 0
@@ -69,8 +80,35 @@ class kline_interval(str, Enum):
             return 0
         else :              #终止和起始时间差超出阈值，异常
             return -3
-    def get_unit(self) -> str:
-        return self.value[-1]
+        
+    #获取pos所在K线的开始时间戳
+    #pos: 毫秒级时间戳
+    def get_K_begin(self, pos : int = 0) -> int:
+        GREENWICH_OFFSET_HOURS = 8
+        begin = 0
+        if pos == 0 :
+            pos_t = datetime.now()
+        else :
+            pos_t = utility.timestamp_to_datetime(pos)
+        UNIT = self.get_unit()
+        VALUE = self.get_value()
+        assert(VALUE > 0)
+        if UNIT == 'm':
+            begin_t = datetime(pos_t.year, pos_t.month, pos_t.day, pos_t.hour, pos_t.minute - pos_t.minute % VALUE, 0)
+            begin = int(begin_t.timestamp()) * 1000
+            print('build from UNIT m: pos_t={}, begin_t={}, begin={}'.format(pos_t, begin_t, begin))
+        elif UNIT == 'h':
+            begin_t = datetime(pos_t.year, pos_t.month, pos_t.day, pos_t.hour - pos_t.hour % VALUE, 0, 0)
+            begin = int(begin_t.timestamp()) * 1000
+            print('build from UNIT h: pos_t={}, begin_t={}, begin={}'.format(pos_t, begin_t, begin))
+        elif UNIT == 'd':
+            assert(VALUE == 1)
+            begin_t = datetime(pos_t.year, pos_t.month, pos_t.day, 0, 0, 0)
+            begin = int(begin_t.timestamp()) * 1000 + GREENWICH_OFFSET_HOURS * 3600 * 1000
+            print('build from UNIT d: pos_t={}, begin_t={}, begin={}'.format(pos_t, begin_t, begin))
+        return begin
+
+
 
 #保存单元
 class save_unit() : 
@@ -104,25 +142,31 @@ class save_unit() :
     def get_unit_seconds(self, dt : datetime = None) -> int:
         count = self.get_K_count(dt)
         delta = self.interval.get_delta()
-        seconds = count * delta.total_seconds()
+        seconds = int(count * delta.total_seconds())
         return seconds
 
     #获取保存周期的（理论）开始时间戳，毫秒级
     #实际的数据不一定从这个时间开始，如第一条数据可能是2017-08-17 04:00:00
     #pos: 当前位置时间戳，毫秒级
-    def get_default_begin(self, pos : int) -> int:
+    def get_unit_begin(self, pos : int = 0) -> int:
         begin = 0
-        pos_t = utility.timestamp_to_datetime(pos)
+        if pos == 0 :
+            pos_t = datetime.now()
+        else :
+            pos_t = utility.timestamp_to_datetime(pos)
         UNIT = self.interval.get_unit()
-        if UNIT == 'm':
-            begin = utility.string_to_timestamp(pos_t.strftime("%Y-%m-%d %H:00:00"))
-        elif UNIT == 'h':
-            begin = utility.string_to_timestamp(pos_t.strftime("%Y-%m-%d 00:00:00"))
-        elif UNIT == 'd':
-            begin = utility.string_to_timestamp(pos_t.strftime("%Y-%m-01 00:00:00"))
+        if self.multiple == 0 :
+            if UNIT == 'm':
+                begin = utility.string_to_timestamp(pos_t.strftime("%Y-%m-%d %H:00:00"))
+            elif UNIT == 'h':
+                begin = utility.string_to_timestamp(pos_t.strftime("%Y-%m-%d 00:00:00"))
+            elif UNIT == 'd':
+                begin = utility.string_to_timestamp(pos_t.strftime("%Y-%m-01 00:00:00"))
+            else :
+                assert(False)
+                pass
         else :
             assert(False)
-            pass
         return begin
 
     #判断是否同一保存周期（同一数据文件）
@@ -134,7 +178,7 @@ class save_unit() :
         if self.multiple > 0 :
             begin = base
         else :
-            begin = self.get_default_begin(base)
+            begin = self.get_unit_begin(base)
         if begin == 0 :
             assert(False)
             return False
