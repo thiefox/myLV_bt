@@ -364,4 +364,4 @@ def test():
     print("MACD monitor_EX End.")        
     return
 
-test()   
+#test()   

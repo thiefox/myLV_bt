@@ -34,7 +34,8 @@ def send_email(receiver : str, title : str, content : str) -> bool:
     return success
 
 def test():
-    receiver = 'thiefox@gmail.com'
+    #receiver = 'thiefox@gmail.com'
+    receiver = 'thiefox@qq.com'
     title = '测试邮件'
     content = '这是一封测试邮件'
     if send_email(receiver, title, content) :

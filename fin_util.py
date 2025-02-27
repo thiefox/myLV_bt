@@ -37,14 +37,18 @@ def find_macd_crossovers(macd : list, signal : list, hist : list, ONLY_LAST : bo
             elif (macd[i] < 0 and signal[i] < 0) :  #0轴下金叉
                 crossovers.append((i, base_item.MACD_CROSS.GOLD_ZERO_DOWN, macd[i]-signal[i], macd[i-1]-signal[i-1]))
             else :
-                print('异常：金叉时macd={}, signal={}，忽略'.format(macd[i], signal[i]))
+                assert(macd[i] >= 0 and signal[i] <= 0)
+                #print('异常：金叉时macd={}, signal={}，忽略'.format(macd[i], signal[i]))
+                crossovers.append((i, base_item.MACD_CROSS.GOLD_ZERO_UPDOWN, macd[i]-signal[i], macd[i-1]-signal[i-1]))
         elif macd[i] < signal[i] and macd[i-1] > signal[i-1]:
             if macd[i] > 0 and signal[i] > 0 :  #0轴上死叉
                 crossovers.append((i, base_item.MACD_CROSS.DEAD_ZERO_UP, macd[i]-signal[i], macd[i-1]-signal[i-1]))
             elif macd[i] < 0 and signal[i] < 0 :  #0轴下死叉
                 crossovers.append((i, base_item.MACD_CROSS.DEAD_ZERO_DOWN, macd[i]-signal[i], macd[i-1]-signal[i-1]))
             else :
-                print('异常：死叉时macd={}, signal={}，忽略'.format(macd[i], signal[i]))
+                assert(macd[i] <= 0 and signal[i] >= 0)
+                #print('异常：死叉时macd={}, signal={}，忽略'.format(macd[i], signal[i]))
+                crossovers.append((i, base_item.MACD_CROSS.DEAD_ZERO_UPDOWN, macd[i]-signal[i], macd[i-1]-signal[i-1]))
     return crossovers
 
 #基于MACD和价格计算顶背离和底背离

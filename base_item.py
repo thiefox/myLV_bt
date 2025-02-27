@@ -8,6 +8,7 @@ from threading import Lock
 import math
 from datetime import datetime, timedelta
 from utils import utility
+from utils import config
 
 # K线周期枚举
 class kline_interval(str, Enum):
@@ -96,19 +97,17 @@ class kline_interval(str, Enum):
         if UNIT == 'm':
             begin_t = datetime(pos_t.year, pos_t.month, pos_t.day, pos_t.hour, pos_t.minute - pos_t.minute % VALUE, 0)
             begin = int(begin_t.timestamp()) * 1000
-            print('build from UNIT m: pos_t={}, begin_t={}, begin={}'.format(pos_t, begin_t, begin))
+            #print('build from UNIT m: pos_t={}, begin_t={}, begin={}'.format(pos_t, begin_t, begin))
         elif UNIT == 'h':
             begin_t = datetime(pos_t.year, pos_t.month, pos_t.day, pos_t.hour - pos_t.hour % VALUE, 0, 0)
             begin = int(begin_t.timestamp()) * 1000
-            print('build from UNIT h: pos_t={}, begin_t={}, begin={}'.format(pos_t, begin_t, begin))
+            #print('build from UNIT h: pos_t={}, begin_t={}, begin={}'.format(pos_t, begin_t, begin))
         elif UNIT == 'd':
             assert(VALUE == 1)
             begin_t = datetime(pos_t.year, pos_t.month, pos_t.day, 0, 0, 0)
             begin = int(begin_t.timestamp()) * 1000 + GREENWICH_OFFSET_HOURS * 3600 * 1000
-            print('build from UNIT d: pos_t={}, begin_t={}, begin={}'.format(pos_t, begin_t, begin))
+            #print('build from UNIT d: pos_t={}, begin_t={}, begin={}'.format(pos_t, begin_t, begin))
         return begin
-
-
 
 #保存单元
 class save_unit() : 
@@ -240,23 +239,28 @@ class save_unit() :
         assert(offset > 0)
         return offset
 
+class crypto_symbol(str, Enum):
+    BTC = 'BTC'
+    ETH = 'ETH'
+    USDT = 'USDT'
+    UNKOWN = ''
+
 class trade_symbol(str, Enum):
     BTCUSDT = 'BTCUSDT'
     ETHUSDT = 'ETHUSDT'
-    def get_base(self) -> str:
-        return self.value[:3]
-    def get_quote(self) -> str:
-        return self.value[3:]
-    def get_BTC_USDT() -> trade_symbol:
-        return trade_symbol.BTCUSDT
-    def get_ETH_USDT() -> trade_symbol:
-        return trade_symbol.ETHUSDT
-    def get_BTC_name() -> str:
-        return 'BTC'
-    def get_USDT_name() -> str:
-        return 'USDT'
-    def get_symbol_with_USDT(asset : str) -> trade_symbol :
-        return trade_symbol(asset + trade_symbol.get_USDT_name())
+    UNKOWN = ''
+    def get_base(self) -> crypto_symbol:
+        if self == trade_symbol.BTCUSDT :
+            return crypto_symbol.BTC
+        elif self == trade_symbol.ETHUSDT :
+            return crypto_symbol.ETH
+        else :
+            return crypto_symbol.UNKOWN
+    def get_quote(self) -> crypto_symbol:
+        if self == trade_symbol.BTCUSDT or self == trade_symbol.ETHUSDT :
+            return crypto_symbol.USDT
+        else :
+            return crypto_symbol.UNKOWN
 
 class TRADE_STATUS(Enum):
     IGNORE = 0
@@ -265,19 +269,23 @@ class TRADE_STATUS(Enum):
     HANDLED = 10        #该条K线已处理过
 
 class MACD_CROSS(Enum):
-    NONE = 0
-    GOLD_ZERO_UP = 1    #0轴上金叉
-    GOLD_ZERO_DOWN = 2  #0轴下金叉
-    DEAD_ZERO_UP = 3    #0轴上死叉
-    DEAD_ZERO_DOWN = 4  #0轴下死叉
-    TOP_DIVERGENCE = 5  #顶背离
-    BOTTOM_DIVERGENCE = 6  #底背离
+    NONE = ''       #之前为0，后面累加
+    GOLD_ZERO_UP = 'GOLD_ZERO_UP'    #0轴上金叉
+    GOLD_ZERO_DOWN = 'GOLD_ZERO_DOWN'  #0轴下金叉
+    DEAD_ZERO_UP = 'DEAD_ZERO_UP'    #0轴上死叉
+    DEAD_ZERO_DOWN = 'DEAD_ZERO_DOWN'  #0轴下死叉
+    TOP_DIVERGENCE = 'TOP_DIVERGENCE'  #顶背离
+    BOTTOM_DIVERGENCE = 'BOTTOM_DIVERGENCE'  #底背离
+    GOLD_ZERO_UPDOWN = 'GOLD_ZERO_UPDOWN'    #金叉，macd在0轴上，signal在0轴下    
+    DEAD_ZERO_UPDOWN = 'DEAD_ZERO_UPDOWN'    #死叉，macd在0轴下，signal在0轴上
     #判断是否金叉
     def is_golden(self) -> bool:
-        return self == MACD_CROSS.GOLD_ZERO_UP or self == MACD_CROSS.GOLD_ZERO_DOWN
+        return self == MACD_CROSS.GOLD_ZERO_UP or self == MACD_CROSS.GOLD_ZERO_DOWN or self == MACD_CROSS.GOLD_ZERO_UPDOWN
     #判断是否死叉
     def is_dead(self) -> bool:
-        return self == MACD_CROSS.DEAD_ZERO_DOWN or self == MACD_CROSS.DEAD_ZERO_UP
+        return self == MACD_CROSS.DEAD_ZERO_DOWN or self == MACD_CROSS.DEAD_ZERO_UP or self == MACD_CROSS.DEAD_ZERO_UPDOWN
+    def is_updown(self) -> bool:
+        return self == MACD_CROSS.GOLD_ZERO_UPDOWN or self == MACD_CROSS.DEAD_ZERO_UPDOWN
     #判断两个交叉是否相反
     def is_opposite(self, other : MACD_CROSS) -> bool:
         opposite = False
@@ -436,7 +444,7 @@ class part_account() :
         self._buy(symbol, amount, price, day, fee)
         return True
     #计算最大可买数量
-    def calc_max(self, price : float, min_amount = DEF_MIN_AMOUNT, fee = DEFAULT_FEE) -> float :
+    def calc_max_buy(self, price : float, min_amount = DEF_MIN_AMOUNT, fee = DEFAULT_FEE) -> float :
         amount = 0
         if min_amount >= 1 :        #最小交易数量大于1
             amount = math.floor(self.__cash / price * (1 - fee) * min_amount) / min_amount
@@ -447,10 +455,19 @@ class part_account() :
         if amount > 0 :
             assert(amount >= min_amount)
             pass
-        return amount    
+        return amount  
+    #计算最大可卖数量
+    def calc_max_sell(self, symbol: trade_symbol, min_amount=DEF_MIN_AMOUNT) -> float:
+        hold = self.get_holding(symbol)
+        if hold is None:
+            return 0
+        amount = hold.amount
+        if amount < min_amount:
+            return 0
+        return amount
     #满仓买入
     def buy_max(self, symbol : trade_symbol, price : float, day = '', min_amount = DEF_MIN_AMOUNT, fee = DEFAULT_FEE) -> float:
-        amount = self.calc_max(price, min_amount, fee)
+        amount = self.calc_max_buy(price, min_amount, fee)
         if amount > 0 :
             self.buy(symbol, amount, price, day, fee)
         return amount

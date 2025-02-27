@@ -1,3 +1,4 @@
+import os
 import hmac
 import hashlib
 from base64 import b64encode
@@ -26,7 +27,11 @@ def ed25519_signature(pri_key_str : str, payload : str, private_key_pass=None) -
 
 def test():
     #载入ECC私钥
-    private_key_file = "D:/src/python/myLV_bt/data/MYLV_E.pem"
+    private_key_file = "../data/MYLV_E.pem"
+    private_key_file = os.path.join(os.getcwd(), private_key_file)
+    if not os.path.exists(private_key_file):
+        print("Private Key file not found, path={}.".format(private_key_file))
+        return
     with open(private_key_file, "r") as f:
         pri_key_str = f.read()
         pri_key_obj = ECC.import_key(pri_key_str)

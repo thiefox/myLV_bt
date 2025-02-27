@@ -32,7 +32,11 @@ class active_monitor() :
         last_handled = 0
         self.config = config.Config()
         if not self.config.loads(config.Config.GET_CONFIG_FILE()):
-            print('异常：加载配置文件{}失败。'.format(config.Config.GET_CONFIG_FILE()))
+            log_adapter.color_print('异常：加载配置文件{}失败。'.format(config.Config.GET_CONFIG_FILE()), log_adapter.COLOR.RED)
+            return
+        last_handled = self.config.general.handled_cross
+        if last_handled > 0 :
+            log_adapter.color_print('重要：最后的处理交叉点={}'.format(utility.timestamp_to_string(last_handled), log_adapter.COLOR.GREEN))
  
         item = self.config.get_macd(self.symbol, self.__su.interval)
         if item is not None and item.last_handled_cross != '':
@@ -40,23 +44,29 @@ class active_monitor() :
             info = datetime.strptime(item.last_handled_cross, '%Y-%m-%d %H:%M:%S') 
             print('重要：最后的处理交叉点2={}'.format(info.strftime('%Y-%m-%d %H:%M:%S')))
             last_handled = info.timestamp() * 1000
-        self.processor = MACD_process.MACD_processor(self.symbol, last_handled)
+        self.processor = MACD_process.MACD_processor(self.symbol, self.config)
         #self.config.update_macd(self.symbol, self.__su.interval, datetime.now().strftime('%Y-%m-%d 00:00:00'))
         return
     
     def _get_client(self) -> bs.BinanceSpotHttp:
         return bs.BinanceSpotHttp(api_key=self.config.api_key, private_key=self.config.private_key)
-    #在线模式加载历史数据
-    def _prepare_online(self) -> bool:
-        http_client = bs.BinanceSpotHttp(api_key=self.config.api_key, private_key=self.config.private_key)        
+    def _general_prepare(self) -> bool:
+        http_client = self._get_client()
         params = http_client.get_exchange_params(self.symbol.value)
         if params is None:
             log_adapter.color_print('异常：获取交易对参数失败。', log_adapter.COLOR.RED)
             return False
         if 'min_quantity' in params and 'min_price' in params:
             self.config.update_exchange_info(self.symbol.value, params['min_price'], params['min_quantity'])
+            log_adapter.color_print('重要：最小交易数量={}。'.format(self.config.general.min_qty), log_adapter.COLOR.GREEN)
+            log_adapter.color_print('重要：最小交易价格={}。'.format(self.config.general.min_price), log_adapter.COLOR.GREEN)
         else:
             log_adapter.color_print('异常：获取minQty和minPrice交易参数失败。', log_adapter.COLOR.RED)
+            return False
+        return True
+    #在线模式加载历史数据
+    def _prepare_online(self) -> bool:
+        if not self._general_prepare():
             return False
         begin = int(datetime.now().timestamp()) * 1000
         offset = self.__su.calc_offset(DEFAULT_BACK_COUNT, begin)
@@ -77,6 +87,8 @@ class active_monitor() :
     #离线模式加载历史数据
     #end: 0表示不指定结束时间，否则表示指定的结束时间
     def _prepare_offline(self, end : int = 0) -> bool:
+        if not self._general_prepare():
+            return False
         if end == 0 :
             end = self.__su.interval.get_K_begin()
         offset = self.__su.calc_offset(DEFAULT_BACK_COUNT, end)
@@ -157,7 +169,7 @@ class active_monitor() :
                 print('重要：K线开始时间={}({})，发生交叉但已被处理过，忽略。'.format(timeinfo, utility.timestamp_to_string(timeinfo)))
             else :
                 assert(status == base_item.TRADE_STATUS.IGNORE)
-                print('通知：忽略该K线(无交叉)，开始时间={}({})'.format(begin_time, utility.timestamp_to_string(begin_time)))
+                print('通知：忽略该K线(无交叉)，开始时间={}'.format(utility.timestamp_to_string(begin_time)))
                 pass
             if self._need_exit() :
                 break            
@@ -173,7 +185,7 @@ class active_monitor() :
         #self.config.save()
         return
     #本地模拟的监控处理，用于观察发生交叉点的后续处理是否正常
-    def _fake_monitor(self, attack_su : base_item.save_unit, begin : int = 0) :
+    def _fake_monitor(self, attack_su : base_item.save_unit, begin : int = 0, end : int = 0) :
         log_adapter.color_print('fake minotor开始...', log_adapter.COLOR.GREEN)
         self.print_kline(-1)
         if begin == 0 :
@@ -185,10 +197,10 @@ class active_monitor() :
         attack_k_begin = attack_su.interval.get_K_begin()
         log_adapter.color_print('self_k_begin={}，attack_k_begin={}...'.format(utility.timestamp_to_string(self_k_begin),
             utility.timestamp_to_string(attack_k_begin)), log_adapter.COLOR.GREEN)
-
-        end = begin + attack_su.get_unit_seconds() * 1000
+        if end == 0 :
+            end = begin + attack_su.get_unit_seconds() * 1000
         assert(isinstance(end, int))
-        log_adapter.color_print('begin={}，end={}...'.format(utility.timestamp_to_string(begin),
+        log_adapter.color_print('攻击开始时间={}，结束时间={}...'.format(utility.timestamp_to_string(begin),
             utility.timestamp_to_string(end)), log_adapter.COLOR.GREEN)
 
         klines = data_loader.load_klines_range(base_item.trade_symbol.BTCUSDT, attack_su,
@@ -233,8 +245,9 @@ class active_monitor() :
                     utility.timestamp_to_string(timeinfo)), log_adapter.COLOR.YELLOW) 
             else :
                 assert(status == base_item.TRADE_STATUS.IGNORE)
-                print('通知：忽略该K线(无交叉)，开始时间={}({})，结束时间={}'.format(begin_time,
-                    utility.timestamp_to_string(begin_time), utility.timestamp_to_string(end_time)))
+
+                print('通知：忽略该K线(无交叉)，开始时间={}，结束时间={}'.format(utility.timestamp_to_string(begin_time),
+                    utility.timestamp_to_string(end_time)))
                 pass
         log_adapter.color_print('重要：fake minotor结束。', log_adapter.COLOR.GREEN)
         return
@@ -247,12 +260,16 @@ class active_monitor() :
         return
     def fake_run(self) : 
         #HISTORY_END为最后一条K线的结束时间
-        HISTORY_END = datetime(2025, 2, 5, 0, 0, 0)
+        HISTORY_END = datetime(year=2025, month=1, day=15)
         end = int(HISTORY_END.timestamp()) * 1000
         if not self._prepare_offline(end) :
             return
         time.sleep(1)
-        self._fake_monitor(base_item.save_unit(base_item.kline_interval.h1))
+        ATTACK_HOURS = 24
+        begin = self.processor.get_time_end(-1) + 1
+        #end = begin + attack_su.get_unit_seconds() * 1000
+        end = begin + ATTACK_HOURS * 60 * 60 * 1000
+        self._fake_monitor(base_item.save_unit(base_item.kline_interval.h1), begin, end)
         self._finish()
         return
 
@@ -276,8 +293,8 @@ def test() :
 
     su = base_item.save_unit(base_item.kline_interval.d1)
     monitor = active_monitor(su)
-    #monitor.run()
-    monitor.fake_run()
+    monitor.run()
+    #monitor.fake_run()
 
     if LOG_FLAG == 1 :
         sys.stdout = tmp_out
@@ -286,4 +303,4 @@ def test() :
     return
 
 #目前采用的币安监控处理器
-test()
+#test()

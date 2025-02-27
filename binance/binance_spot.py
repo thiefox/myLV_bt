@@ -132,7 +132,7 @@ class BinanceSpotHttp(object):
                 time.sleep(3)
 
     #返回一般为dict/list，看具体请求
-    def request_ex(self, method : RequestMethod, url : str, params : dict = None, sign=False):
+    def request_ex(self, method : RequestMethod, url : str, params : dict = None, sign=False) :
         url = self.host + url
         headers = {"X-MBX-APIKEY": self.api_key}
         if sign:
@@ -180,12 +180,14 @@ class BinanceSpotHttp(object):
 
         infos = None
         if response is not None:    
-            print('response={}'.format(response))
             infos = None
             if response.status_code == 200:
                 infos = response.json()
             else :
-                print('请求失败, status_code={}，data={}'.format(response.status_code, response.json()))
+                infos = response.json()
+                #code = infos['code']
+                #msg = infos['msg']
+                print('异常：请求失败, 响应状态码={}, 返回={}。'.format(response.status_code, infos))
             response.close()
         else :
             print('请求失败')
@@ -376,6 +378,8 @@ class BinanceSpotHttp(object):
         :param client_order_id: 用户的订单ID
         :param time_inforce:
         :param stop_price:
+        :param newOrderRespType: 订单的响应类型
+        :param quoteOrderQty:市价买卖单可用quoteOrderQty参数来设置quote asset数量. 正确的quantity取决于市场的流动性与quoteOrderQty
         :return:
         """
         # 下单
@@ -546,7 +550,6 @@ class BinanceSpotHttp(object):
             else :
                 print('异常：sell_market未取到最小交易数量参数。')
                 return None
-
             symbol = asset + 'USDT'
             quantity = round(amount, percision)
             order_id = self.gen_client_order_id()

@@ -2,7 +2,7 @@
   "market": "cm_future",
   "api_key": "XYCWi1jlDJcOPG8MltM0plnPQlmqFd0wuvCKVuokovxlmwXBADoCI7Ea78h6bX2Y",
   "api_key_type": "ED25519",
-  "secret_path": "D:/src/python/myLV_bt/data/MYLV_E.pem",
+  "secret_path": "",
   "platform": "binance_spot",
   "symbol": "ATOMUSDT",
   "gap_percent": 0.05,

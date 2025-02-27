@@ -79,11 +79,17 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, su : save_unit) -> 
 
         if i in [c[0] for c in crossovers]:
             index = [c[0] for c in crossovers].index(i)
-            if crossovers[index][1] == MACD_CROSS.GOLD_ZERO_UP or crossovers[index][1] == MACD_CROSS.GOLD_ZERO_DOWN:  #金叉
+            cross : MACD_CROSS = crossovers[index][1]
+            if cross.is_updown():
+                if cross.is_golden() :
+                    print('异常：日期={}, 金叉交叉跨0轴，忽略。'.format(date_str))
+                else :
+                    print('异常：日期={}, 死叉交叉跨0轴，忽略。'.format(date_str))
+            elif cross.is_golden():  #金叉
                 if cur_account.get_amount(BTCUSDT) == 0:
                     buy_price = closed_prices[i]
                     print('重要：日期={}，出现金叉，可用资金={}, 币价={}, 可买数量={}'.format(date_str, cur_account.cash, 
-                        buy_price, cur_account.calc_max(buy_price, MIN_AMOUNT, FEE)))
+                        buy_price, cur_account.calc_max_buy(buy_price, MIN_AMOUNT, FEE)))
                     amount = cur_account.buy_max(BTCUSDT, buy_price, date_str, MIN_AMOUNT, FEE)
                     assert(amount > 0)
                     print('重要：日期={}, 金叉买入操作完成，当前资金={}, 当前币数={}。'.format(date_str, cur_account.cash, 
@@ -94,7 +100,7 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, su : save_unit) -> 
                     print('异常：日期={}, 金叉买入信号，已为持仓状态(资金={}，持币={})，放弃该金叉。'.format(date_str, 
                         cur_account.cash, cur_account.get_amount(BTCUSDT)))
                     ig_gold.append(i)
-            elif crossovers[index][1] == MACD_CROSS.DEAD_ZERO_UP or crossovers[index][1] == MACD_CROSS.DEAD_ZERO_DOWN:  #死叉
+            elif cross.is_dead():  #死叉
                 if cur_account.get_amount(BTCUSDT) > 0:
                     sell_price = closed_prices[i]
                     print('重要：日期={}，出现死叉，卖出操作，价格={}, 数量={}...'.format(date_str, sell_price, cur_account.get_amount(BTCUSDT)))
@@ -139,7 +145,7 @@ def calc_MACD_daily_profit(year_begin : int, year_end : int, su : save_unit) -> 
     BUY_OP = True
     for index in range(0, len(operations)):
         i = operations[index]
-        cur_account = accounts[i]
+        cur_account : base_item.part_account = accounts[i]
         #date_str = datetime.strptime(dates[i], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
         if BUY_OP:
             print('金叉买入：i={}，日期={}，价格={}，数量={}，剩余资金={}. 总值={}.'.format(i, dates[i], closed_prices[i],
