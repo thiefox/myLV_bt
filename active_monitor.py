@@ -1,5 +1,7 @@
 import sys
 import time
+import platform
+import signal
 import logging
 from datetime import datetime, timedelta
 
@@ -11,12 +13,19 @@ import base_item
 import kline_spider
 import MACD_process
 import data_loader
+import mail_template
 
 #from binance import BinanceSpotHttp
 #from binance import authentication
-import binance.binance_spot as bs
+#import binance.binance_spot as bs
+import binance_spot_wrap as bsw
 
 DEFAULT_BACK_COUNT = 200
+
+def exit_gracefully(signum, frame):
+    print('received signal %d' % signum)
+    sys.exit(0)
+    return
 
 class active_monitor() :
     def __init__(self, su : base_item.save_unit) :
@@ -26,8 +35,14 @@ class active_monitor() :
         EIGHT_HOURS_SECONDS = ONE_HOUR_SECONDS * 8
         ONE_DAY_SECONDS = 60 * 60 * 24
         TEN_YEARS_SECONDS = ONE_DAY_SECONDS * 365 * 10
-        self.MONITOR_SECONDS = ONE_HOUR_SECONDS * 4
+        #self.MONITOR_SECONDS = ONE_HOUR_SECONDS * 4
+        self.MONITOR_SECONDS = 0
         self.monitor_begin = datetime.min
+        self.last_notify = datetime.min           #每日12点的例行通知
+        self.bsw = bsw.binance_spot_wrapper()
+        if not self.bsw.init() :
+            log_adapter.color_print('异常：初始化币安接口包装器失败。', log_adapter.COLOR.RED)
+            return
         
         last_handled = 0
         self.config = config.Config()
@@ -44,24 +59,19 @@ class active_monitor() :
             info = datetime.strptime(item.last_handled_cross, '%Y-%m-%d %H:%M:%S') 
             print('重要：最后的处理交叉点2={}'.format(info.strftime('%Y-%m-%d %H:%M:%S')))
             last_handled = info.timestamp() * 1000
+
         self.processor = MACD_process.MACD_processor(self.symbol, self.config)
         #self.config.update_macd(self.symbol, self.__su.interval, datetime.now().strftime('%Y-%m-%d 00:00:00'))
         return
     
-    def _get_client(self) -> bs.BinanceSpotHttp:
-        return bs.BinanceSpotHttp(api_key=self.config.api_key, private_key=self.config.private_key)
     def _general_prepare(self) -> bool:
-        http_client = self._get_client()
-        params = http_client.get_exchange_params(self.symbol.value)
-        if params is None:
-            log_adapter.color_print('异常：获取交易对参数失败。', log_adapter.COLOR.RED)
-            return False
-        if 'min_quantity' in params and 'min_price' in params:
-            self.config.update_exchange_info(self.symbol.value, params['min_price'], params['min_quantity'])
+        min_price, min_quantity = self.bsw.get_exchange_params(self.symbol)
+        if min_quantity > 0 :
+            self.config.update_exchange_info(self.symbol.value, min_price, min_quantity)
             log_adapter.color_print('重要：最小交易数量={}。'.format(self.config.general.min_qty), log_adapter.COLOR.GREEN)
             log_adapter.color_print('重要：最小交易价格={}。'.format(self.config.general.min_price), log_adapter.COLOR.GREEN)
-        else:
-            log_adapter.color_print('异常：获取minQty和minPrice交易参数失败。', log_adapter.COLOR.RED)
+        else :
+            log_adapter.color_print('异常：获取minQty={}和minPrice={}交易参数失败。'.format(min_quantity, min_price), log_adapter.COLOR.RED)
             return False
         return True
     #在线模式加载历史数据
@@ -114,11 +124,31 @@ class active_monitor() :
     def _need_exit(self) -> bool:
         now = datetime.now()
         delta = now - self.monitor_begin
-        if delta.total_seconds() >= self.MONITOR_SECONDS:
+        if self.MONITOR_SECONDS > 0 and delta.total_seconds() >= self.MONITOR_SECONDS:
             print('重要：开始时间={}，当前时间={}，达到结束时间，退出。'.format(datetime.strftime(self.monitor_begin, '%Y-%m-%d %H-%M-%S'), 
                 datetime.strftime(now, '%Y-%m-%d %H-%M-%S')))
             return True
         return False
+    def _daily_notify(self) :
+        now = datetime.now()
+        #if now.hour == 12 and now.day > self.last_notify.day :
+        if now.hour != self.last_notify.hour :
+            print('重要：每日12点日报通知，当前时间={}。'.format(now.strftime('%Y-%m-%d %H:%M:%S')))
+            msg = '每日定点通知，当前时间={}。\n'.format(now.strftime('%Y-%m-%d %H:%M:%S'))
+            mail = mail_template.mail_content('thiefox@qq.com')
+            last_cross = self.processor.get_last_cross()
+            last_handled = self.processor.get_last_handled_cross()
+            price = self.bsw.get_price(self.symbol)
+            if last_handled[0] != base_item.MACD_CROSS.NONE :
+                msg += '最后处理的交叉点时间={}，类型={}。\n'.format(utility.timestamp_to_string(last_handled[1]), last_handled[0].value)
+            else :
+                msg += '最后的历史交叉点时间={}，类型={}。\n'.format(utility.timestamp_to_string(last_cross[1]), last_cross[0].value)
+            msg += '当前价格={}$。\n'.format(price)
+            
+            if mail.write_mail('定期通报', msg) :
+                print('重要：每日12点日报通知发送成功。')
+                self.last_notify = now
+        return
     #获取剩余的监控时间
     def _get_remain_seconds(self) -> timedelta:
         now = datetime.now()
@@ -158,12 +188,29 @@ class active_monitor() :
             print('重要：获取到实时K线数据记录={}'.format(len(klines)))
             assert(len(klines) == 1)
             begin_time = int(klines[0][0])
-            cross, status, timeinfo = self.processor.update_kline(klines)
+            cross, status, timeinfo, infos = self.processor.update_kline(klines)
             if status == base_item.TRADE_STATUS.BUY or status == base_item.TRADE_STATUS.SELL:
                 assert(timeinfo == begin_time)
-                print('重要：发生交易处理，status={}，cross={}，时间={}({})'.format(status, cross,
+                print('重要：发生交易处理，status={}，cross={}，时间={}({})'.format(status, cross.value,
                     timeinfo, utility.timestamp_to_string(timeinfo)))
                 self.config.update_macd(self.symbol, self.__su.interval, utility.timestamp_to_string(timeinfo))
+                mail = mail_template.mail_content('thiefox@qq.com')
+                if infos['local_code'] == 0:
+                    mail.update_with_success(utility.timestamp_to_string(timeinfo), cross, infos)
+                else :
+                    mail.update_with_failed(utility.timestamp_to_string(timeinfo), cross, infos['local_msg'])
+                if not mail.send_mail() :
+                    if cross.is_golden() :  
+                        print('异常：金叉买入失败，发送邮件失败。')
+                    else :
+                        print('异常：死叉卖出失败，发送邮件失败。')
+            elif status == base_item.TRADE_STATUS.FAILED :
+                assert(infos['local_code'] == -1)
+                print('异常：时间={}发生交叉点，但交易失败，原因={}。'.format(utility.timestamp_to_string(timeinfo), infos['local_msg']))
+                mail = mail_template.mail_content('thiefox@qq.com')
+                mail.update_with_failed(utility.timestamp_to_string(timeinfo), cross, infos['local_msg'])
+                if not mail.send_mail() :
+                    print('异常：交易失败，发送邮件失败。')
             elif status == base_item.TRADE_STATUS.HANDLED :
                 assert(timeinfo == begin_time)
                 print('重要：K线开始时间={}({})，发生交叉但已被处理过，忽略。'.format(timeinfo, utility.timestamp_to_string(timeinfo)))
@@ -171,6 +218,8 @@ class active_monitor() :
                 assert(status == base_item.TRADE_STATUS.IGNORE)
                 print('通知：忽略该K线(无交叉)，开始时间={}'.format(utility.timestamp_to_string(begin_time)))
                 pass
+            time.sleep(1)
+            self._daily_notify()
             if self._need_exit() :
                 break            
             time.sleep(60)
@@ -233,7 +282,7 @@ class active_monitor() :
             begin_time = int(kline[0])
             end_time = int(kline[6])
 
-            cross, status, timeinfo = self.processor.update_kline(list(kline))
+            cross, status, timeinfo, infos = self.processor.update_kline(list(kline))
             if status == base_item.TRADE_STATUS.BUY or status == base_item.TRADE_STATUS.SELL:
                 assert(timeinfo == begin_time)
                 log_adapter.color_print('重要：发生交易处理，status={}，cross={}，开始时间={}({})，结束时间={}'.format(status, cross,
@@ -275,6 +324,13 @@ class active_monitor() :
 
 def test() :
     print("Active Monitor Start...")
+    if platform.system().upper() == 'WINDOWS':
+        signal.signal(signal.SIGINT, exit_gracefully)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    elif platform.system().upper() == 'LINUX':
+        signal.signal(signal.SIGINT, exit_gracefully)
+        signal.signal(signal.SIGTERM, exit_gracefully)
+
 
     LOG_FLAG = 0
     if LOG_FLAG == 1 :
@@ -303,4 +359,4 @@ def test() :
     return
 
 #目前采用的币安监控处理器
-#test()
+test()

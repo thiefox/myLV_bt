@@ -34,10 +34,11 @@ class MACD_processor():
         self.dailies = pd.DataFrame(columns=['date', 'cash', 'hold', 'profit'])
         #交叉点列表，索引/交叉点/交易状态/时间戳
         #记录的是出现的交叉点，而不是处理的交叉点，后者是前者的子集
-        self.crosses = list[int, base_item.MACD_CROSS, base_item.TRADE_STATUS, int]()        
-        if self.__config.get_hc() > 0 :
-            log_adapter.color_print('重要：processor重新启动，最后处理交叉点={}'.format(utility.timestamp_to_string(self.__config.get_hc())),
-                log_adapter.COLOR.YELLOW)   
+        self.crosses = list[int, base_item.MACD_CROSS, base_item.TRADE_STATUS, int]()    
+        hc_info = self.__config.get_hc()    
+        if hc_info[0] > 0 :
+            log_adapter.color_print('重要：processor重新启动，最后处理交叉点时间={}，类型={}'.format(utility.timestamp_to_string(hc_info[0]),
+                hc_info[1]), log_adapter.COLOR.YELLOW)   
         else :
             log_adapter.color_print('重要：processor第一次运行，没有最后处理交叉点。', log_adapter.COLOR.YELLOW)
         #WINDOW_LENGTH=0表示不限制K线数量
@@ -62,9 +63,24 @@ class MACD_processor():
     def open_daily_log(self, LOG : bool):
         self.DAILY_LOG = LOG
         return
-    def get_last_cross(self) -> tuple[base_item.MACD_CROSS, base_item.TRADE_STATUS, int]:
-        info = (base_item.MACD_CROSS.NONE, base_item.TRADE_STATUS.IGNORE, 0)
-        return
+    #取得最后一个处理过的交叉点
+    def get_last_handled_cross(self) -> tuple[base_item.MACD_CROSS, int]:
+        cross = base_item.MACD_CROSS.NONE
+        timeinfo = 0
+        hc_info = self.__config.get_hc()
+        if hc_info[0] > 0 :
+            timeinfo = hc_info[0]
+            cross = base_item.MACD_CROSS(hc_info[1])
+        return cross, timeinfo
+    def get_last_cross(self) -> tuple[base_item.MACD_CROSS, int]:
+        cross = base_item.MACD_CROSS.NONE
+        timeinfo = 0
+        if len(self.crosses) > 0 :
+            cross = self.crosses[-1][1]
+            assert(isinstance(cross, base_item.MACD_CROSS))
+            timeinfo = int(self.__klines.loc[self.crosses[-1][0], 'date_b'])
+            assert(isinstance(timeinfo, int))
+        return cross, timeinfo
     #初始化历史K线数据
     #返回槽中的K线数量
     def init_history(self, klines : list) -> int:
@@ -82,13 +98,9 @@ class MACD_processor():
         self.__process_ex(HISTORY=True)
         return len(self.__klines)
     #更新一条K线数据
-    def update_kline(self, kline : list) -> tuple[base_item.MACD_CROSS, base_item.TRADE_STATUS, int]:
+    def update_kline(self, kline : list) -> tuple[base_item.MACD_CROSS, base_item.TRADE_STATUS, int, dict]:
         assert(isinstance(kline, list))
         kline = data_loader.get_kline_shape(kline)
-        if len(self.__klines) > 0 :
-            #print('update_kline, 头索引={}, 尾索引={}...'.format(self.__klines.index[0], self.__klines.index[-1]))
-            pass
-        #print('{}'.format(self.__klines))
         if len(self.__klines) == 0 :    #第一条K线
             self.__klines.loc[0] = kline
             #print('重要：第一条K线，开始时间={}.'.format(utility.timestamp_to_string(kline[0])))
@@ -138,67 +150,47 @@ class MACD_processor():
         return round(self.__klines.iloc[index, 1], 2)
     def get_price_close(self, index : int) -> float:
         return round(self.__klines.iloc[index, 4], 2)
-    #市价买单
-    def buy_market(self, amount : float, price : float) -> str:
-        order_id = ''
-        self.__buyed_action(order_id, amount, price)
-        return order_id
-    #挂出卖单，返回挂单ID
-    def __post_selling(self, amount : float, price : float) -> str:
-        order_id = ''
-        self.__selled_action(order_id, amount, price)
-        return order_id
-    #收到服务端的买入成功通知
-    #order_id: 挂单ID. 可能为成功部分
-    def __buyed_action(self, order_id : str, amount : float, price : float):
-        self.__account.buy(self.symbol, amount, price)
-        return
-    #收到服务端的卖出成功通知
-    def __selled_action(self, order_id : str, amount : float, price : float):
-        self.__account.sell(self.symbol, amount, price)
-        return
-    def sell_all(self, price : float) -> str:
-        order_id = ''
-        amount = self.account.get_amount(self.symbol)
-        if amount > 0:
-            order_id = self.__post_selling(amount, price)
-        return order_id
+    #市价买单，如果amount=0，则满仓买入
+    #返回dict有效则成功，None为买入失败
+    def buy_market(self, amount : float = 0) -> dict:
+        bsw = binance_spot_wrap.binance_spot_wrapper()
+        bsw.buy_with_market(self.symbol, amount)
+    #市价卖单，如果amount=0，则全部卖出
+    #返回dict有效则成功，None为卖出失败
+    def sell_martket(self, amount : float = 0) -> dict:
+        bsw = binance_spot_wrap.binance_spot_wrapper()
+        return bsw.sell_with_market(self.symbol, amount)
     #处理MACD交叉
     #index: 交叉发生的K线索引
-    def __process_cross(self, cross : base_item.MACD_CROSS, index : int) -> base_item.TRADE_STATUS:
+    def __process_cross(self, cross : base_item.MACD_CROSS, index : int) -> tuple[base_item.TRADE_STATUS, dict]:
         #print('打印K线数据...{}'.format(self.__klines))
         index = self.__klines.index[index]
         assert(self.__config is not None)
+        infos = None
         #print('内部索引={}, 外部索引={}, 交叉={}'.format(ni, index, cross))
         status = base_item.TRADE_STATUS.IGNORE
         #date_str = utility.timestamp_to_string(self.__klines[index, 'date_b'], ONLY_DATE=True)
         date_str = utility.timestamp_to_string(int(self.__klines.loc[index, 'date_b']), ONLY_DATE=True)
         if cross.is_golden() and not cross.is_updown() : #金叉
             buy_price = self.__klines.loc[index, 'close']
-            amount = self.account.calc_max_buy(buy_price, min_amount=self.__config.general.min_qty)
-            if amount > 0:
-                print('重要：日期={}，出现金叉，可用资金={}, 币价={}, 可买数量={}'.format(date_str, self.account.cash, 
-                    buy_price, amount))
-                self.__post_buying(amount, buy_price)
-                print('重要：日期={}, 金叉买入操作完成，当前资金={}, 当前币数={}。'.format(date_str, self.account.cash, 
-                    self.__account.get_amount(self.symbol)))
+            print('重要：日期={}，出现金叉，币价={}，尝试买入操作...'.format(date_str, round(buy_price, 2)))
+            infos = self.buy_market()
+            if infos['local_code'] == 0 :
                 status = base_item.TRADE_STATUS.BUY
             else :
-                log_adapter.color_print('重要：日期={}, 金叉买入信号，资金不足={}，已持币={}，放弃该金叉。'.format(date_str, 
-                    self.account.cash, self.account.get_amount(self.symbol)), log_adapter.COLOR.RED)
+                status = base_item.TRADE_STATUS.FAILED
         elif cross.is_dead() and not cross.is_updown() : #死叉
-            amount = self.account.get_amount(self.symbol)
-            if amount > self.__config.general.min_qty :
-                sell_price = self.__klines.loc[index, 'close']
-                print('重要：日期={}，出现死叉，卖出操作，价格={}, 数量={}...'.format(date_str, sell_price, self.account.get_amount(self.symbol)))
-                self.__post_selling(amount, sell_price)
-                print('重要：日期={}, 死叉卖出操作完成，当前资金={}, 当前币数={}。'.format(date_str, self.account.cash, 
-                    self.account.get_amount(self.symbol)))
+            sell_price = self.__klines.loc[index, 'close']
+            print('重要：日期={}，出现死叉，币价={}，尝试卖出操作...'.format(date_str, round(sell_price, 2)))
+            infos = self.sell_martket()
+            if infos['local_code'] == 0 :
                 status = base_item.TRADE_STATUS.SELL
             else :
-                log_adapter.color_print('重要：日期={}, 死叉卖出信号，无持仓状态，资金={}，持币={}，放弃该死叉。'.format(date_str, self.account.cash, 
-                    amount), log_adapter.COLOR.RED)
-        return status
+                status = base_item.TRADE_STATUS.FAILED
+        else :
+            status = base_item.TRADE_STATUS.IGNORE
+            pass
+        return status, infos
 
     def print_crossover(self, crossovers : list, closes : list, dates : list[str], asascend : bool = True):
         cur = 0
@@ -253,9 +245,10 @@ class MACD_processor():
     
     #如HISTORY=True，则检测和打印数据列表上的所有交叉点，不处理。
     #如HISTORY=False，则检测数据列表的最后一条是否有交叉点，有则处理。
-    def __process_ex(self, HISTORY : bool = False) -> tuple[base_item.MACD_CROSS, base_item.TRADE_STATUS, int]:
+    def __process_ex(self, HISTORY : bool = False) -> tuple[base_item.MACD_CROSS, base_item.TRADE_STATUS, int, dict]:
         cross = base_item.MACD_CROSS.NONE
         status = base_item.TRADE_STATUS.IGNORE
+        infos = None
         #获取收盘价列表
         assert(len(self.__klines) > 0)
         #获取最后一条K线的收盘价
@@ -302,18 +295,19 @@ class MACD_processor():
                     else :
                         print('异常：交叉点=({},{})不是最新位置，最后一个有效交叉=({},{}).'.format(oi, cross, last_oi, last_cross))
                 if index == len(closes) - 1 and not HISTORY :        #最新的K线上有交叉
-                    if self.__config.get_hc() == 0 or self.__config.get_hc() < dates[index] :
-                        status = self.__process_cross(cross, index)
+                    hc_info = self.__config.get_hc()
+                    if hc_info[0] == 0 or hc_info[0] < dates[index] :   #这个交叉点没有处理过
+                        status, infos = self.__process_cross(cross, index)
                         log_adapter.color_print('重要：出现新的MACD交叉点={}, 日期={}, 索引={}, 处理结果={}.'.format(cross, 
                             dates_str[index], index, status), log_adapter.COLOR.GREEN)
-                        self.__config.update_hc(dates[index])
-                    elif self.__config.get_hc() == dates[index] :
+                        self.__config.update_hc(dates[index], cross.value)
+                    elif hc_info[0] == dates[index] :
                         log_adapter.color_print('重要：K线交叉点={}已处理，索引={}, 时间={}。'.format(cross, index, dates_str[index]),
                             log_adapter.COLOR.RED)
                         status = base_item.TRADE_STATUS.HANDLED
                     else :
                         log_adapter.color_print('异常：交叉点={}，索引={}, 时间={}，小于最后处理时间={}.'.format(cross, index, dates_str[index],
-                            utility.timestamp_to_string(self.__config.get_hc())), log_adapter.COLOR.RED)
+                            utility.timestamp_to_string(hc_info[0])), log_adapter.COLOR.RED)
                         assert(False)
                 else :
                     #assert(False)
@@ -328,7 +322,7 @@ class MACD_processor():
             #prices = {base_item.trade_symbol.BTCUSDT: closes[-1], }
             profit = self.account.cash + self.account.get_amount(self.symbol) * closes[-1]
             self.dailies.loc[len(self.dailies)] = [dates[-1], self.account.cash, self.account.get_amount(self.symbol), profit]
-        return cross, status, self.__config.get_hc()
+        return cross, status, self.__config.get_hc()[0], infos
 
 
     def print_cross(self):

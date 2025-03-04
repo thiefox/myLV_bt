@@ -195,8 +195,8 @@ def test_buy(amount : float = 0) :
     keys = _get_keys()
     http_client = BinanceSpotHttp(api_key=keys[0], private_key=keys[1])
     info = http_client.buy_market('BTC', amount=amount)
-    if info is not None :
-        try:
+    try:
+        if info['local_code'] == 0:    
             request_qty = float(info['origQty'])
             executed_qty = float(info['executedQty'])
             log_adapter.color_print('重要：买单请求数量={}, 成交数量={}'.format(request_qty, executed_qty), log_adapter.COLOR.GREEN)
@@ -205,12 +205,13 @@ def test_buy(amount : float = 0) :
                 price = round(float(fill['price']), 2)
                 qty = round(float(fill['qty']), 5)
                 log_adapter.color_print('重要：---成交价格={}, 成交数量={}'.format(price, qty), log_adapter.COLOR.GREEN)
-        except Exception as e:
-            log_adapter.color_print('异常：获取买单信息失败，原因={}'.format(e), log_adapter.COLOR.RED)
-        time.sleep(1)
-        test_account_balance()
-    else :
-        log_adapter.color_print('异常：下单买入失败', log_adapter.COLOR.RED)
+        else :
+            assert(info['local_code'] == -1)
+            log_adapter.color_print('异常：市价买入失败，原因={}'.format(info['local_msg']), log_adapter.COLOR.RED)
+    except Exception as e:
+        log_adapter.color_print('异常：获取买单信息失败，原因={}'.format(e), log_adapter.COLOR.RED)
+    time.sleep(1)
+    test_account_balance()
     return
 
 #下市价卖单
@@ -218,8 +219,8 @@ def test_sell(amount : float = 0) :
     keys = _get_keys()
     http_client = BinanceSpotHttp(api_key=keys[0], private_key=keys[1])
     info = http_client.sell_market('BTC', amount=amount)
-    if info is not None :
-        try:
+    try:
+        if info['local_code'] == 0:
             request_qty = float(info['origQty'])
             executed_qty = float(info['executedQty'])
             log_adapter.color_print('重要：卖单请求数量={}, 成交数量={}'.format(request_qty, executed_qty), log_adapter.COLOR.GREEN)
@@ -228,12 +229,13 @@ def test_sell(amount : float = 0) :
                 price = round(float(fill['price']), 2)
                 qty = round(float(fill['qty']), 5)
                 log_adapter.color_print('重要：---成交价格={}, 成交数量={}'.format(price, qty), log_adapter.COLOR.GREEN)
-        except Exception as e:
-            log_adapter.color_print('异常：获取卖单信息失败，原因={}'.format(e), log_adapter.COLOR.RED)
-        time.sleep(1)
-        test_account_balance()
-    else :
-        log_adapter.color_print('异常：下单卖出失败', log_adapter.COLOR.RED)
+        else :
+            assert(info['local_code'] == -1)
+            log_adapter.color_print('异常：市价卖出失败，原因={}'.format(info['local_msg']), log_adapter.COLOR.RED)
+    except Exception as e:
+        log_adapter.color_print('异常：获取卖单信息失败，原因={}'.format(e), log_adapter.COLOR.RED)
+    time.sleep(1)
+    test_account_balance()
     return
 
 def test_cancel_order(order_id : str) :

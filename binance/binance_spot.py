@@ -520,7 +520,7 @@ class BinanceSpotHttp(object):
             for balance in account_info['balances']:
                 if balance['asset'] == asset:
                     return float(balance['free'])
-        return 0.0
+        return float(0)
     
     #amount=0表示清仓卖出
     def sell_market(self, asset : str, amount : float= 0) -> dict:
@@ -531,6 +531,7 @@ class BinanceSpotHttp(object):
         :param quantity: 卖出数量
         :return:
         """
+        infos = dict()
         remaining = self.get_balance(asset)
         if amount == 0 :
             amount = remaining
@@ -543,22 +544,33 @@ class BinanceSpotHttp(object):
 
                 s_min = f"{min_quantity:f}".rstrip('0')
                 percision = len(str(s_min).split('.')[1])
-                print('最小数量小数位数={}'.format(percision))
+                #print('最小数量小数位数={}'.format(percision))
                 if amount < min_quantity:
                     print('异常：{}已有数量={:f}({})小于最小卖出数量={:f}({})，交易取消。'.format(asset, remaining, remaining, min_quantity, min_quantity))
-                    return None
+                    infos['local_code'] = -1
+                    infos['local_msg'] = '{}已有数量={:f}({})小于最小卖出数量={:f}({})，交易取消。'.format(asset, 
+                        remaining, remaining, min_quantity, min_quantity)
+                    return infos
             else :
+                infos['local_code'] = -1
+                infos['local_msg'] = '未取到最小交易数量参数。'
                 print('异常：sell_market未取到最小交易数量参数。')
-                return None
+                return infos
             symbol = asset + 'USDT'
             quantity = round(amount, percision)
             order_id = self.gen_client_order_id()
-            print('生成本地订单id={}, 卖出数量={}'.format(order_id, quantity))
-            info = self.place_order(symbol, OrderSide.SELL, OrderType.MARKET, quantity, 0, order_id, time_inforce=timeInForce.GTC)
-            print('打印下卖单结果...')
-            print(info)
-            return info
+            #print('生成本地订单id={}, 卖出数量={}'.format(order_id, quantity))
+            infos = self.place_order(symbol, OrderSide.SELL, OrderType.MARKET, quantity, 0, order_id, time_inforce=timeInForce.GTC)
+            if infos is None :
+                infos = dict()
+                infos['local_code'] = -1
+                infos['local_msg'] = '卖单返回空结果。'
+            else :
+                infos['local_code'] = 0
+                infos['local_msg'] = '卖单完成。'
         else :
+            infos['local_code'] = -1
+            infos['local_msg'] = '{}资产余额为0，本地取消卖单。'.format(asset)
             print('异常：{}资产余额为0'.format(asset))
         return None
     
@@ -571,10 +583,11 @@ class BinanceSpotHttp(object):
         :param quantity: 买入数量
         :return:
         """
+        infos = dict()
         #获取USDT余额
         balance = int(self.get_balance('USDT'))
         if balance > 0:
-            print('USDT余额={}'.format(balance))
+            #print('USDT余额={}'.format(balance))
             #对买入数量进行步进处理
             params = self.get_exchange_params(asset + 'USDT')
             if params is not None and 'min_quantity' in params :
@@ -584,19 +597,29 @@ class BinanceSpotHttp(object):
                     assert(amount >= min_quantity)
             else :
                 print('异常：buy_market未取到最小交易数量参数。')
-                return None
+                infos['local_code'] = -1
+                infos['local_msg'] = '未取到最小交易数量参数。'
+                return infos
 
             symbol = asset + 'USDT'
             #quantity = balance
             order_id = self.gen_client_order_id()
-            print('生成本地订单id={}'.format(order_id))
+            #print('生成本地订单id={}'.format(order_id))
             if amount > 0 :
                 balance = 0
-            info = self.place_order(symbol, OrderSide.BUY, OrderType.MARKET, amount, 0, order_id, 
+            infos = self.place_order(symbol, OrderSide.BUY, OrderType.MARKET, amount, 0, order_id, 
                 time_inforce=timeInForce.GTC, quoteOrderQty=balance)
-            print('打印下买单结果...')
-            print(info)
-            return info
+            if infos is None :
+                infos = dict()
+                infos['local_code'] = -1
+                infos['local_msg'] = '买单返回空结果。'
+            else :
+                infos['local_code'] = 0
+                infos['local_msg'] = '买单完成。'
+                #print('打印下买单结果...')
+                #print(info)
         else :
-            print('异常：USDT资产余额为0')
-        return None
+            print('异常：USDT资产余额为0。')
+            infos['local_code'] = -1
+            infos['local_msg'] = 'USDT资产余额为0，本地取消买单。'
+        return infos

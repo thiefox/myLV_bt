@@ -262,13 +262,14 @@ class trade_symbol(str, Enum):
         else :
             return crypto_symbol.UNKOWN
 
-class TRADE_STATUS(Enum):
-    IGNORE = 0
-    BUY = 1
-    SELL = 2
-    HANDLED = 10        #该条K线已处理过
+class TRADE_STATUS(str, Enum):
+    IGNORE = 'IGNORE'
+    BUY = 'BUY'
+    SELL = 'SELL'
+    FAILED = 'FAILED'          #交易失败
+    HANDLED = 'HANDLED'        #该条K线已处理过
 
-class MACD_CROSS(Enum):
+class MACD_CROSS(str, Enum):
     NONE = ''       #之前为0，后面累加
     GOLD_ZERO_UP = 'GOLD_ZERO_UP'    #0轴上金叉
     GOLD_ZERO_DOWN = 'GOLD_ZERO_DOWN'  #0轴下金叉

@@ -72,6 +72,7 @@ class general:
         self.dingding_prompt = ""  #钉钉消息提示
 
         self.handled_cross = 0      #已处理的交叉点毫秒时间戳（K线开始时间）
+        self.cross_type = ''        #交叉点类型，golden/death
         return
     def path_trans(self) -> bool :
         print('开始path_trans...')
@@ -196,14 +197,16 @@ class Config:
         else :
             return False
     #取得最后处理过的交叉点时间戳
-    def get_hc(self) -> int:
-        return self.__general.handled_cross
+    def get_hc(self) -> tuple[int, str]:
+        return self.__general.handled_cross, self.__general.cross_type
     #更新最后处理过的交叉点时间戳
-    def update_hc(self, handled_cross : int) -> bool:
+    def update_hc(self, handled_cross : int, cross_type : str) -> bool:
         assert(isinstance(handled_cross, int))
+        assert(isinstance(cross_type, str))
         assert(handled_cross > 0)
         if self.__general.handled_cross != handled_cross:
             self.__general.handled_cross = handled_cross
+            self.__general.cross_type = cross_type
             self.saves()
             return True
     #返回True表示更新成功，False表示不需要更新
