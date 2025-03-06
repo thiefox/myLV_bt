@@ -154,12 +154,24 @@ class MACD_processor():
     #返回dict有效则成功，None为买入失败
     def buy_market(self, amount : float = 0) -> dict:
         bsw = binance_spot_wrap.binance_spot_wrapper()
-        bsw.buy_with_market(self.symbol, amount)
+        if bsw.init() :
+            return bsw.buy_with_market(self.symbol.get_base(), amount)
+        else :
+            infos = dict()
+            infos['local_code'] = -1
+            infos['local_msg'] = 'bsw初始化失败'
+            return infos
     #市价卖单，如果amount=0，则全部卖出
     #返回dict有效则成功，None为卖出失败
     def sell_martket(self, amount : float = 0) -> dict:
         bsw = binance_spot_wrap.binance_spot_wrapper()
-        return bsw.sell_with_market(self.symbol, amount)
+        if bsw.init() :
+            return bsw.sell_with_market(self.symbol.get_base(), amount)
+        else :
+            infos = dict()
+            infos['local_code'] = -1
+            infos['local_msg'] = 'bsw初始化失败'
+            return infos
     #处理MACD交叉
     #index: 交叉发生的K线索引
     def __process_cross(self, cross : base_item.MACD_CROSS, index : int) -> tuple[base_item.TRADE_STATUS, dict]:

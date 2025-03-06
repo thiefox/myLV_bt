@@ -8,7 +8,7 @@
     ],
     "api_key": "XYCWi1jlDJcOPG8MltM0plnPQlmqFd0wuvCKVuokovxlmwXBADoCI7Ea78h6bX2Y",
     "api_key_type": "ED25519",
-    "secret_path": "./data/MYLV_E.pem",
+    "secret_path": "D:\\src\\python\\myLV_bt\\data\\MYLV_E.pem",
     "private_key_pass": "",
     "pass_phrase": "",
     "symbol": "BTCUSDT",
@@ -21,13 +21,14 @@
     "proxy_port": 0,
     "dingding_token": "",
     "dingding_prompt": "",
-    "handled_cross": 1736899200000
+    "handled_cross": 1741219200000,
+    "cross_type": "GOLD_ZERO_DOWN"
   },
   "macds": [
     {
       "symbol": "BTCUSDT",
       "interval": "1d",
-      "last_handled_cross": ""
+      "last_handled_cross": "2025-03-06 08:00:00"
     }
   ]
 }

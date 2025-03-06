@@ -43,7 +43,7 @@ class active_monitor() :
         if not self.bsw.init() :
             log_adapter.color_print('异常：初始化币安接口包装器失败。', log_adapter.COLOR.RED)
             return
-        
+        assert(self.bsw.is_valid())
         last_handled = 0
         self.config = config.Config()
         if not self.config.loads(config.Config.GET_CONFIG_FILE()):
@@ -65,6 +65,7 @@ class active_monitor() :
         return
     
     def _general_prepare(self) -> bool:
+        assert(self.bsw.is_valid())
         min_price, min_quantity = self.bsw.get_exchange_params(self.symbol)
         if min_quantity > 0 :
             self.config.update_exchange_info(self.symbol.value, min_price, min_quantity)
@@ -359,4 +360,4 @@ def test() :
     return
 
 #目前采用的币安监控处理器
-test()
+#test()

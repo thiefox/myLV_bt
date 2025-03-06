@@ -21,7 +21,8 @@ class binance_spot_wrapper:
     @property
     def PRI_KEY(self) -> str:
         return self.cfg.private_key    
-    
+    def is_valid(self) -> bool:
+        return len(self.API_KEY) > 0 and len(self.PRI_KEY) > 0
     def get_exchange_params(self, symbol : base_item.crypto_symbol) -> tuple[float, float]:
         min_price = float(0)
         min_quantity = float(0)
@@ -81,6 +82,9 @@ class binance_spot_wrapper:
     #市价买入
     #amount: 买入数量。如果为0，则满仓买入。
     def buy_with_market(self, symbol : base_item.crypto_symbol, amount : float = 0) -> dict:
+        assert(len(self.API_KEY) > 0)
+        assert(len(self.PRI_KEY) > 0)
+        assert(isinstance(symbol, base_item.crypto_symbol))
         http_client = BS.BinanceSpotHttp(api_key=self.API_KEY, private_key=self.PRI_KEY)
         infos = http_client.buy_market(symbol.value, amount=amount)
         try:
@@ -103,6 +107,9 @@ class binance_spot_wrapper:
     #市价卖出
     #amount: 卖出数量。如果为0，则全部卖出。
     def sell_with_market(self, symbol : base_item.crypto_symbol, amount : float = 0) -> dict:
+        assert(len(self.API_KEY) > 0)
+        assert(len(self.PRI_KEY) > 0)  
+        assert(isinstance(symbol, base_item.crypto_symbol))
         http_client = BS.BinanceSpotHttp(api_key=self.API_KEY, private_key=self.PRI_KEY)
         infos = http_client.sell_market(symbol.value, amount=amount)
         assert(infos is not None)

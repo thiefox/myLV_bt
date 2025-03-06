@@ -351,8 +351,12 @@ class BinanceSpotHttp(object):
     def _get_sign(self, query_str: str) -> str:
         if self.private_key is not None:
             try:
+                print('尝试ed25519签名..., private_key={}, private_pass={}'.format(self.private_key, self.private_key_pass))
+                print('query_str={}'.format(query_str))
                 return ed25519_signature(self.private_key, query_str, self.private_key_pass).decode("utf-8")
-            except ValueError:
+            except ValueError as e:
+                print("ed25519签名失败， 原因：={}".format(e))
+                print('尝试RSA签名...')
                 return rsa_signature(self.private_key, query_str, self.private_key_pass).decode("utf-8")
         else:
             return hmac_hashing(self.api_secret, query_str)
@@ -572,7 +576,7 @@ class BinanceSpotHttp(object):
             infos['local_code'] = -1
             infos['local_msg'] = '{}资产余额为0，本地取消卖单。'.format(asset)
             print('异常：{}资产余额为0'.format(asset))
-        return None
+        return infos
     
     #amount=0表示满仓买入
     def buy_market(self, asset : str, amount : float=0) -> dict:
