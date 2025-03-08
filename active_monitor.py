@@ -144,8 +144,27 @@ class active_monitor() :
                 msg += '最后处理的交叉点时间={}，类型={}。\n'.format(utility.timestamp_to_string(last_handled[1]), last_handled[0].value)
             else :
                 msg += '最后的历史交叉点时间={}，类型={}。\n'.format(utility.timestamp_to_string(last_cross[1]), last_cross[0].value)
-            msg += '当前价格={}$。\n'.format(price)
-            
+            msg += '当前{}价格={}$。\n'.format(self.symbol.value, price)
+            balances = self.bsw.get_all_balances()
+            btc_total = float(0)
+            usdt_asset = float(0)
+            for balance in balances :
+                if balance['asset'] == 'USDT' :
+                    usdt_asset = round(float(balance['free']) + float(balance['locked']), 2)
+                    if float(balance['locked']) > 0:
+                        msg += 'USDT余额={}$，free={}$，lock={}$。\n'.format(usdt_asset, round(balance['free'], 2), round(balance['locked'], 2))
+                    else :
+                        msg += 'USDT余额={}$。\n'.format(usdt_asset)
+                elif balance['asset'] == 'BTC' :
+                    btc_total = round(float(balance['free']) + float(balance['locked']), 5)
+                    if float(balance['locked']) > 0 :
+                        msg += '币{}数量={}个，free={}个，lock={}个。\n'.format(balance['asset'], btc_total, round(balance['free'], 5), round(balance['locked'], 5))
+                    else :
+                        msg += '币{}数量={}个。\n'.format(balance['asset'], btc_total)
+            btc_asset = round(btc_total * price, 2)
+            total_asset = round(usdt_asset + btc_asset, 2)
+            msg += '当前USDT剩余={}$，BTC数量={}，价值={}$，总资产={}$。\n'.format(usdt_asset, btc_total, btc_asset, total_asset)
+
             if mail.write_mail('定期通报', msg) :
                 print('重要：每日12点日报通知发送成功。')
                 self.last_notify = now
@@ -360,4 +379,4 @@ def test() :
     return
 
 #目前采用的币安监控处理器
-#test()
+test()
