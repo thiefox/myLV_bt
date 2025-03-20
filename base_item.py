@@ -7,8 +7,8 @@ from threading import Lock
 
 import math
 from datetime import datetime, timedelta
-from utils import utility
-from utils import config
+from com_utils import utility
+from com_utils import config
 
 # K线周期枚举
 class kline_interval(str, Enum):

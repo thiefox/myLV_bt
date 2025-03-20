@@ -6,12 +6,12 @@
 
 from binance import BinanceSpotHttp, OrderStatus, OrderType, OrderSide
 #from utils import config
-from utils import utility
+from com_utils import utility
 from enum import Enum
 import logging
 from datetime import datetime
 
-from utils.config import Config as config
+from com_utils.config import Config as config
 
 # 现货网格策略
 

@@ -1,12 +1,13 @@
 import os
+import logging
 import numpy as np
 import talib
 import copy
 from pandas import DataFrame, Series
 from datetime import datetime
 
-from utils import utility
-from utils import log_adapter
+from com_utils import utility
+from com_utils import log_adapter
 
 import base_item
 
@@ -14,12 +15,12 @@ def get_kline_file_name(symbol : base_item.trade_symbol, su : base_item.save_uni
     base_dir = '{}\\data\\{}\\kline\\{}'.format(os.getcwd(), symbol.value, su.interval.value)
     last_dir = su.get_save_dir(dt)
     base_dir = '{}\\{}'.format(base_dir, last_dir)
-    #print('base_dir={}'.format(base_dir))
+    logging.debug('base_dir={}'.format(base_dir))
     if DIR_MUST_EXISTS and not os.path.exists(base_dir):
         os.makedirs(base_dir, exist_ok=True)
     file_name = su.get_save_file(dt)
     file_name = '{}\\{}'.format(base_dir, file_name)
-    #print('file_name={}'.format(file_name))
+    logging.debug('file_name={}'.format(file_name))
     return file_name
 
 #计算MACD交叉点, macd即为快线(DIF)，signal即为慢线(DEA)
@@ -38,7 +39,7 @@ def find_macd_crossovers(macd : list, signal : list, hist : list, ONLY_LAST : bo
                 crossovers.append((i, base_item.MACD_CROSS.GOLD_ZERO_DOWN, macd[i]-signal[i], macd[i-1]-signal[i-1]))
             else :
                 assert(macd[i] >= 0 and signal[i] <= 0)
-                #print('异常：金叉时macd={}, signal={}，忽略'.format(macd[i], signal[i]))
+                logging.debug('金叉时macd={}, signal={}，忽略'.format(macd[i], signal[i]))
                 crossovers.append((i, base_item.MACD_CROSS.GOLD_ZERO_UPDOWN, macd[i]-signal[i], macd[i-1]-signal[i-1]))
         elif macd[i] < signal[i] and macd[i-1] > signal[i-1]:
             if macd[i] > 0 and signal[i] > 0 :  #0轴上死叉
@@ -47,7 +48,7 @@ def find_macd_crossovers(macd : list, signal : list, hist : list, ONLY_LAST : bo
                 crossovers.append((i, base_item.MACD_CROSS.DEAD_ZERO_DOWN, macd[i]-signal[i], macd[i-1]-signal[i-1]))
             else :
                 assert(macd[i] <= 0 and signal[i] >= 0)
-                #print('异常：死叉时macd={}, signal={}，忽略'.format(macd[i], signal[i]))
+                logging.debug('死叉时macd={}, signal={}，忽略'.format(macd[i], signal[i]))
                 crossovers.append((i, base_item.MACD_CROSS.DEAD_ZERO_UPDOWN, macd[i]-signal[i], macd[i-1]-signal[i-1]))
     return crossovers
 
@@ -112,16 +113,17 @@ class prices_info():
             END = len(self.__prices)
         for i in range(BEGIN, END):
             if DATES is not None:
-                print('index={}, date={}, price={}'.format(i, DATES[i], self.__prices[i]))
+                logging.debug('index={}, date={}, price={}'.format(i, DATES[i], self.__prices[i]))
             else :
-                print('index={}, price={}'.format(i, self.__prices[i]))
+                logging.debug('index={}, price={}'.format(i, self.__prices[i]))
         return
 
     #计算价格列表上两个点之间的收益比例
     #盈利为正值，亏损为负值
     def calc_profit_scale(self, begin : int, end : int) -> float:
         if begin >= end :
-            print('异常：begin={}, end={}'.format(begin, end))
+            logging.error('异常：begin={}, end={}'.format(begin, end))
+            return 0
         assert(begin < end)
         assert(end < len(self.__prices))
         begin_price = float(self.__prices[begin])
@@ -191,15 +193,13 @@ class prices_info():
         # /MACD
         # 金叉的意思就是快线（股票行情指标的短期线）向上穿越慢线（长期线）的交叉；死叉反之。通常情况下，金叉是买进信号，死叉为卖出信号。
         macd, signal, hist = getattr(talib, 'MACD')(np.array(self.__prices),  fastperiod=12, slowperiod=26, signalperiod=9)
-        #print('共计算出MACD记录数={}'.format(len(macd)))
-        '''
-        print('开始打印MACD原始值...')
+        logging.debug('共计算出MACD记录数={}'.format(len(macd)))
+        logging.debug('开始打印MACD原始值...')
         for i in range(len(macd)):
             if i >= 33 :    #macd和signal的前33个值为0(nan)
-                print('index={}, macd={}, signal={}, hits={}'.format(i, macd[i], signal[i], hist[i]))
+                logging.debug('index={}, macd={}, signal={}, hits={}'.format(i, macd[i], signal[i], hist[i]))
             pass
-        print('打印MACD原始值结束.')
-        '''
+        logging.debug('打印MACD原始值结束.')
         return macd, signal, hist
     
 # 检查K线列表的时间连续性
@@ -212,9 +212,9 @@ def check_time_continuity(dates: list, inter : base_item.kline_interval) -> bool
             ts1 = utility.timestamp_to_string(dates[i-1])
             ts2 = utility.timestamp_to_string(dates[i])
             diff_seconds = int((dates[i] - dates[i-1])/1000)
-            log_adapter.color_print('异常：上一条时间戳{}=({})和当前{}=({})之间的时间间隔={}不是{}秒'.format(dates[i-1], ts1,
-                dates[i], ts2, diff_seconds, inter.get_interval_seconds()), log_adapter.COLOR.RED)
-            log_adapter.color_print('异常：总记录数={}, 当前记录数={}'.format(len(dates), i), log_adapter.COLOR.RED)
+            logging.error('上一条时间戳{}=({})和当前{}=({})之间的时间间隔={}不是{}秒'.format(dates[i-1], ts1,
+                dates[i], ts2, diff_seconds, inter.get_interval_seconds()))
+            logging.error('总记录数={}, 当前记录数={}'.format(len(dates), i))
             return False
     return True
     
@@ -227,7 +227,7 @@ def test() :
     max_consecutive = 0
     cur_consecutive = 0
     for i in range(len(index)):
-        print('index={}, value={}'.format(index[i], new_sr[index[i]]))
+        print('i={}, index={}, value={}'.format(i, index[i], new_sr[index[i]]))
         if i == 0 :
             cur_consecutive = 1
         elif index[i] - index[i-1] == 1 :

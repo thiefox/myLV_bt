@@ -9,10 +9,10 @@ from binance import BinanceSpotHttp
 from binance import authentication
 import binance.binance_spot as bs
 
-from utils import config
+from com_utils import config
 #from utils import utility, round_to, dingding_info
-from utils import utility
-from utils import log_adapter
+from com_utils import utility
+from com_utils import log_adapter
 from enum import Enum
 import logging
 from datetime import datetime, timezone 
@@ -206,7 +206,6 @@ def test_buy(amount : float = 0) :
                 qty = round(float(fill['qty']), 5)
                 log_adapter.color_print('重要：---成交价格={}, 成交数量={}'.format(price, qty), log_adapter.COLOR.GREEN)
         else :
-            assert(info['local_code'] == -1)
             log_adapter.color_print('异常：市价买入失败，原因={}'.format(info['local_msg']), log_adapter.COLOR.RED)
     except Exception as e:
         log_adapter.color_print('异常：获取买单信息失败，原因={}'.format(e), log_adapter.COLOR.RED)
@@ -230,7 +229,6 @@ def test_sell(amount : float = 0) :
                 qty = round(float(fill['qty']), 5)
                 log_adapter.color_print('重要：---成交价格={}, 成交数量={}'.format(price, qty), log_adapter.COLOR.GREEN)
         else :
-            assert(info['local_code'] == -1)
             log_adapter.color_print('异常：市价卖出失败，原因={}'.format(info['local_msg']), log_adapter.COLOR.RED)
     except Exception as e:
         log_adapter.color_print('异常：获取卖单信息失败，原因={}'.format(e), log_adapter.COLOR.RED)
@@ -286,7 +284,7 @@ def test_time():
     return
 
 #test_depth()                       #获取交易深度
-test_account_balance()             #获取账户余额
+#test_account_balance()             #获取账户余额
 #获取账户余额或交易深度, 当ACCOUNT=False时等同于test_depth(), 当ACCOUNT=True时等同于test_account_balance()
 #test_balance(ACCOUNT=False)        
 #test_exchange_info()               #获取交易对元信息

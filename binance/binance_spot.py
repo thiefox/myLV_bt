@@ -3,11 +3,13 @@
 """
     Binance Spot http requests.
 """
-
+import traceback
+import sys
 import requests
 import time
 from enum import Enum
 from threading import Lock
+import logging
 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -119,16 +121,16 @@ class BinanceSpotHttp(object):
         elif requery_dict:
             url += '?' + BinanceSpotHttp.build_parameters(requery_dict)
         headers = {"X-MBX-APIKEY": self.api_key}
-        print('请求url={}'.format(url))
+        logging.debug('请求url={}'.format(url))
         for i in range(0, self.try_counts):
             try:
                 response = requests.request(req_method.value, url=url, headers=headers, timeout=self.timeout, proxies=self.proxies)
                 if response.status_code == 200:
                     return response.json()
                 else:
-                    print('请求失败, status_code={}，data={}'.format(response.status_code, response.json()))
+                    logging.error('返回异常, status_code={}，data={}'.format(response.status_code, response.json()))
             except Exception as error:
-                print(f"请求:{path}, 发生了错误: {error}")
+                logging.error('请求失败，原因={}'.format(error))
                 time.sleep(3)
 
     #返回一般为dict/list，看具体请求
@@ -141,7 +143,7 @@ class BinanceSpotHttp(object):
             url += '?' + query_str
         elif params is not None:
             url += '?' + BinanceSpotHttp.build_parameters(params)
-        print('请求URL={}'.format(url)) 
+        logging.debug('请求URL={}'.format(url))
         response = None
         for i in range(0, self.try_counts):
             try :
@@ -153,7 +155,7 @@ class BinanceSpotHttp(object):
                 adapter = HTTPAdapter(max_retries=retry)
                 session.mount('http://', adapter)
                 session.mount('https://', adapter)
-                print('请求数据, method={}...'.format(method.value))
+                logging.debug('请求数据, method={}...'.format(method.value))
                 if method == RequestMethod.GET:
                     response = session.get(url, headers=headers, timeout=self.timeout, proxies=self.proxies)
                 elif method == RequestMethod.POST:
@@ -162,20 +164,20 @@ class BinanceSpotHttp(object):
                     response = session.delete(url, headers=headers, timeout=self.timeout, proxies=self.proxies)
                 elif method == RequestMethod.PUT:
                     response = session.put(url, headers=headers, timeout=self.timeout, proxies=self.proxies)
-                print('请求数据完成')
-            except requests.exceptions.ConnectionError:
-                print('异常:requests.exceptions.ConnectionError')
-            except requests.exceptions.ConnectTimeout:
-                print('异常:requests.exceptions.ConnectTimeout')
-            except requests.exceptions.Timeout:
-                print('异常:requests.exceptions.Timeout')
+                logging.debug('请求数据完成')
+            except requests.exceptions.ConnectionError as e:
+                logging.error('ConnectionError，原因={}'.format(e))
+            except requests.exceptions.ConnectTimeout as e:
+                logging.error('ConnectTimeout，原因={}'.format(e))
+            except requests.exceptions.Timeout as e:
+                logging.error('Timeout，原因={}'.format(e))
             except Exception as e:
-                print('请求数据失败={}'.format(e))
+                logging.error('请求数据失败，原因={}'.format(e))
             finally:
                 session.close()
             if response is not None:
                 break
-            print('尝试次数={}，休眠3秒...'.format(i))
+            logging.debug('尝试次数={}，休眠3秒...'.format(i))
             time.sleep(3)
 
         infos = None
@@ -187,10 +189,10 @@ class BinanceSpotHttp(object):
                 infos = response.json()
                 #code = infos['code']
                 #msg = infos['msg']
-                print('异常：请求失败, 响应状态码={}, 返回={}。'.format(response.status_code, infos))
+                logging.error('请求失败, status_code={}, 返回={}。'.format(response.status_code, infos))
             response.close()
         else :
-            print('请求失败')
+            logging.error('请求失败，Response=None。')
             pass
         return infos
 
@@ -242,7 +244,7 @@ class BinanceSpotHttp(object):
                             filters = sym['filters']
                             for filter in filters :
                                 if 'filterType' in filter and filter['filterType'] == 'LOT_SIZE' :
-                                    print('filter={}'.format(filter))
+                                    logging.debug('filter={}'.format(filter))
                                     if 'minQty' in filter :
                                         params['min_quantity'] = float(filter['minQty'])
                                     if 'maxQty' in filter :
@@ -348,18 +350,33 @@ class BinanceSpotHttp(object):
         """
         return int(time.time() * 1000)
 
-    def _get_sign(self, query_str: str) -> str:
+    def _get_sign(self, query_str: str) :
+        result = ''
         if self.private_key is not None:
             try:
-                print('尝试ed25519签名..., private_key={}, private_pass={}'.format(self.private_key, self.private_key_pass))
-                print('query_str={}'.format(query_str))
-                return ed25519_signature(self.private_key, query_str, self.private_key_pass).decode("utf-8")
-            except ValueError as e:
-                print("ed25519签名失败， 原因：={}".format(e))
-                print('尝试RSA签名...')
-                return rsa_signature(self.private_key, query_str, self.private_key_pass).decode("utf-8")
+                logging.debug('尝试ed25519签名1..., private_key={}, private_pass={}'.format(self.private_key, self.private_key_pass))
+                logging.debug('query_str={}'.format(query_str))
+                result = ed25519_signature(self.private_key, query_str, self.private_key_pass).decode("utf-8")
+            except Exception as e:
+                tb = traceback.format_exc()
+                logging.error("ed25519签名失败1， 原因：={}".format(e))
+                logging.error("traceback={}".format(tb))
+                #info = sys.exc_info()[2]
+                #logging.error("sys.exc_info={}".format(info))
+                sys.exit(1)
+                logging.debug('尝试RSA签名...')
+                try :
+                    result = rsa_signature(self.private_key, query_str, self.private_key_pass).decode("utf-8")
+                except Exception as e:
+                    logging.error('RSA签名失败，原因={}。'.format(e))
         else:
-            return hmac_hashing(self.api_secret, query_str)
+            try :
+                result = hmac_hashing(self.api_secret, query_str)
+            except Exception as e:
+                logging.error('hmac_hashing失败，原因={}。'.format(e))
+                logging.error('query_str={}'.format(query_str))
+                sys.exit(1)
+        return result
 
     def _sign(self, params : dict) -> str:
         """
@@ -461,8 +478,8 @@ class BinanceSpotHttp(object):
             try:
                 order = self.request(RequestMethod.DELETE, path, params, verify=True)
                 return order
-            except Exception as error:
-                print(f'cancel order error:{error}')
+            except Exception as e:
+                logging.error('取消订单失败，次数={}，原因={}'.format(i, e))
         return None
 
     def get_open_orders(self, symbol:str='') -> list:
@@ -548,9 +565,9 @@ class BinanceSpotHttp(object):
 
                 s_min = f"{min_quantity:f}".rstrip('0')
                 percision = len(str(s_min).split('.')[1])
-                #print('最小数量小数位数={}'.format(percision))
+                logging.debug('最小数量小数位数={}'.format(percision))
                 if amount < min_quantity:
-                    print('异常：{}已有数量={:f}({})小于最小卖出数量={:f}({})，交易取消。'.format(asset, remaining, remaining, min_quantity, min_quantity))
+                    logging.warning('{}已有数量={:f}({})小于最小卖出数量={:f}({})，交易取消。'.format(asset, remaining, remaining, min_quantity, min_quantity))
                     infos['local_code'] = -1
                     infos['local_msg'] = '{}已有数量={:f}({})小于最小卖出数量={:f}({})，交易取消。'.format(asset, 
                         remaining, remaining, min_quantity, min_quantity)
@@ -558,12 +575,12 @@ class BinanceSpotHttp(object):
             else :
                 infos['local_code'] = -1
                 infos['local_msg'] = '未取到最小交易数量参数。'
-                print('异常：sell_market未取到最小交易数量参数。')
+                logging.error('sell_market未取到最小交易数量参数。')
                 return infos
             symbol = asset + 'USDT'
             quantity = round(amount, percision)
             order_id = self.gen_client_order_id()
-            #print('生成本地订单id={}, 卖出数量={}'.format(order_id, quantity))
+            logging.debug('生成本地订单id={}, 卖出数量={}'.format(order_id, quantity))
             infos = self.place_order(symbol, OrderSide.SELL, OrderType.MARKET, quantity, 0, order_id, time_inforce=timeInForce.GTC)
             if infos is None :
                 infos = dict()
@@ -573,9 +590,9 @@ class BinanceSpotHttp(object):
                 infos['local_code'] = 0
                 infos['local_msg'] = '卖单完成。'
         else :
-            infos['local_code'] = -1
+            infos['local_code'] = -100
             infos['local_msg'] = '{}资产余额为0，本地取消卖单。'.format(asset)
-            print('异常：{}资产余额为0'.format(asset))
+            logging.warning('{}资产余额为0'.format(asset))
         return infos
     
     #amount=0表示满仓买入
@@ -591,7 +608,7 @@ class BinanceSpotHttp(object):
         #获取USDT余额
         balance = int(self.get_balance('USDT'))
         if balance > 0:
-            #print('USDT余额={}'.format(balance))
+            logging.debug('USDT余额={}'.format(balance))
             #对买入数量进行步进处理
             params = self.get_exchange_params(asset + 'USDT')
             if params is not None and 'min_quantity' in params :
@@ -600,7 +617,7 @@ class BinanceSpotHttp(object):
                     amount = amount - amount % min_quantity
                     assert(amount >= min_quantity)
             else :
-                print('异常：buy_market未取到最小交易数量参数。')
+                logging.error('buy_market未取到最小交易数量参数。')
                 infos['local_code'] = -1
                 infos['local_msg'] = '未取到最小交易数量参数。'
                 return infos
@@ -608,7 +625,6 @@ class BinanceSpotHttp(object):
             symbol = asset + 'USDT'
             #quantity = balance
             order_id = self.gen_client_order_id()
-            #print('生成本地订单id={}'.format(order_id))
             if amount > 0 :
                 balance = 0
             infos = self.place_order(symbol, OrderSide.BUY, OrderType.MARKET, amount, 0, order_id, 
@@ -620,10 +636,9 @@ class BinanceSpotHttp(object):
             else :
                 infos['local_code'] = 0
                 infos['local_msg'] = '买单完成。'
-                #print('打印下买单结果...')
-                #print(info)
+                logging.debug('买单完成，infos={}'.format(infos))
         else :
-            print('异常：USDT资产余额为0。')
-            infos['local_code'] = -1
+            logging.warning('USDT资产余额为0，本地取消买单。')
+            infos['local_code'] = -100
             infos['local_msg'] = 'USDT资产余额为0，本地取消买单。'
         return infos

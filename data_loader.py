@@ -2,8 +2,8 @@ import os
 import json
 from datetime import datetime, timedelta
 
-import utils.utility as utility
-import utils.log_adapter as log_adapter
+import com_utils.utility as utility
+import com_utils.log_adapter as log_adapter
 
 from base_item import trade_symbol, kline_interval, save_unit
 import fin_util

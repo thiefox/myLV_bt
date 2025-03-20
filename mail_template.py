@@ -1,6 +1,6 @@
 from enum import Enum
 
-from utils import mail_qq
+from com_utils import mail_qq
 import base_item
 
 GOLD_CROSS_NOTIFY   = '重要：时间={} 类型={}，发生金叉买入信号，价格={}$，请及时关注。'

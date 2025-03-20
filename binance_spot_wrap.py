@@ -1,8 +1,11 @@
+import logging
+import socket
+
 import binance.binance_spot as BS
 
-from utils import config
-from utils import utility
-from utils import log_adapter
+from com_utils import config
+from com_utils import utility
+from com_utils import log_adapter
 
 import base_item
 
@@ -12,7 +15,7 @@ class binance_spot_wrapper:
         return
     def init(self) -> bool:
         if not self.cfg.loads():
-            log_adapter.color_print('异常：加载配置文件失败。', log_adapter.COLOR.RED)
+            logging.error('加载配置文件失败。')
             return False
         return True
     @property
@@ -23,13 +26,33 @@ class binance_spot_wrapper:
         return self.cfg.private_key    
     def is_valid(self) -> bool:
         return len(self.API_KEY) > 0 and len(self.PRI_KEY) > 0
+    def check_DNS(self) -> bool:
+        ip_address = socket.gethostbyname('api.binance.com')
+        logging.info('DNS解析api.binance.com的IP地址={}'.format(ip_address))
+        try :
+            socket.inet_aton(ip_address)
+            logging.info('IP地址合法。')
+            return True
+        except Exception as e:
+            logging.error('IP地址非法，原因={}'.format(e))
+            return False
+    def get_server_time(self) -> int:
+        http_client = BS.BinanceSpotHttp(api_key=self.API_KEY, private_key=self.PRI_KEY)
+        infos = http_client.get_server_time()
+        server_time = 0
+        if infos is not None :
+            if 'serverTime' in infos:
+                server_time = int(infos['serverTime'])
+                logging.info('获取服务器时间={}'.format(utility.timestamp_to_string(server_time)))
+        return server_time
+
     def get_exchange_params(self, symbol : base_item.crypto_symbol) -> tuple[float, float]:
         min_price = float(0)
         min_quantity = float(0)
         http_client = BS.BinanceSpotHttp(api_key=self.API_KEY, private_key=self.PRI_KEY)
         params = http_client.get_exchange_params(symbol.value)
         if params is None:
-            log_adapter.color_print('异常：获取交易对参数失败。', log_adapter.COLOR.RED)
+            logging.error('获取交易对参数失败。')
         else : 
             if 'min_quantity' in params : 
                 min_quantity = float(params['min_quantity'])
@@ -48,9 +71,9 @@ class binance_spot_wrapper:
                 buy_qty = round(float(infos['bidQty']), 5)
                 sell_price = round(float(infos['askPrice']), 2)
                 sell_qty = round(float(infos['askQty']), 5)
-                #print('买价（最高）={}, 买量={:.6f}, 卖价（最低）={}, 卖量={:.6f}'.format(buy_price, buy_qty, sell_price, sell_qty))
+                logging.debug('买价（最高）={}, 买量={:.6f}, 卖价（最低）={}, 卖量={:.6f}'.format(buy_price, buy_qty, sell_price, sell_qty))
         except Exception as e:
-            log_adapter.color_print('异常：获取币种{}价格失败，原因：{}'.format(symbol.value, e), log_adapter.COLOR.RED)
+            logging.error('获取币种{}价格失败，原因：{}'.format(symbol.value, e))
         return sell_price
 
     def get_all_balances(self) -> list[dict]:
@@ -61,9 +84,9 @@ class binance_spot_wrapper:
             for balance in infos['balances']:
                 if float(balance['free']) > 0 or float(balance['locked']) > 0:
                     balances.append(balance)
-                    #print('balance={}'.format(balance))
+                    logging.debug('balance={}'.format(balance))
         except Exception as e:
-            log_adapter.color_print('异常：获取全币种余额失败，原因：{}'.format(e), log_adapter.COLOR.RED)
+            logging.error('获取全币种余额失败，原因：{}'.format(e))
         return balances
 
     def get_banlance(self, symbol : base_item.crypto_symbol) -> tuple[float, float]:
@@ -77,7 +100,7 @@ class binance_spot_wrapper:
                     locked = float(balance['locked'])
                     break
         except Exception as e:
-            log_adapter.color_print('异常：获取{}余额失败，原因：{}'.format(symbol.value, e), log_adapter.COLOR.RED)
+            logging.error('获取{}余额失败，原因：{}'.format(symbol.value, e))
         return free, locked
     #市价买入
     #amount: 买入数量。如果为0，则满仓买入。
@@ -91,18 +114,16 @@ class binance_spot_wrapper:
             if infos['local_code'] == 0:
                 request_qty = float(infos['origQty'])
                 executed_qty = float(infos['executedQty'])
-                log_adapter.color_print('重要：买单完成，请求数量={}, 成交数量={}。'.format(request_qty, executed_qty), log_adapter.COLOR.GREEN)
+                logging.info('买单完成，请求数量={}, 成交数量={}。'.format(request_qty, executed_qty))
                 fills = infos['fills']
                 for fill in fills:
                     price = round(float(fill['price']), 2)
                     qty = round(float(fill['qty']), 5)
-                    log_adapter.color_print('重要：---买单价格={}, 成交数量={}'.format(price, qty), log_adapter.COLOR.GREEN)
+                    logging.debug('---买单价格={}, 成交数量={}'.format(price, qty))
             else :
-                assert(infos['local_code'] == -1)
-                log_adapter.color_print('异常：市价买入失败，币种={}，数量={}，原因={}。'.format(symbol.value, 
-                    amount, infos['local_msg']), log_adapter.COLOR.RED)
+                logging.critical('市价买入失败，币种={}，数量={}，原因={}。'.format(symbol.value, amount, infos['local_msg']))
         except Exception as e:
-            log_adapter.color_print('异常：获取买单信息失败，原因={}。'.format(e), log_adapter.COLOR.RED)
+            logging.error('获取买单信息失败，原因={}。'.format(e))
         return infos
     #市价卖出
     #amount: 卖出数量。如果为0，则全部卖出。
@@ -117,17 +138,15 @@ class binance_spot_wrapper:
             if infos['local_code'] == 0:
                 request_qty = float(infos['origQty'])
                 executed_qty = float(infos['executedQty'])
-                log_adapter.color_print('重要：卖单完成，请求数量={}, 成交数量={}。'.format(request_qty, executed_qty), log_adapter.COLOR.GREEN)
+                logging.info('卖单完成，请求数量={}, 成交数量={}。'.format(request_qty, executed_qty))
                 fills = infos['fills']
                 for fill in fills:
                     price = round(float(fill['price']), 2)
                     qty = round(float(fill['qty']), 5)
-                    log_adapter.color_print('重要：---卖单价格={}, 成交数量={}'.format(price, qty), log_adapter.COLOR.GREEN)
+                    logging.debug('---卖单价格={}, 成交数量={}'.format(price, qty))
             else :
-                assert(infos['local_code'] == -1)
-                log_adapter.color_print('异常：市价卖出失败，币种={}，数量={}，原因={}。'.format(symbol.value, 
-                    amount, infos['local_msg']), log_adapter.COLOR.RED)
+                logging.error('市价卖出失败，币种={}，数量={}，原因={}。'.format(symbol.value, amount, infos['local_msg']))
         except Exception as e:
-            log_adapter.color_print('异常：获取卖单信息失败，原因={}。'.format(e), log_adapter.COLOR.RED)
+            logging.error('获取卖单信息失败，原因={}。'.format(e))
         return infos
 

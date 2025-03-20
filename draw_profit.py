@@ -1,6 +1,6 @@
 import numpy as np
 
-from utils import utility
+from com_utils import utility
 
 from base_item import trade_symbol, save_unit
 import data_loader

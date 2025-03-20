@@ -32,5 +32,7 @@ def main():
         
         time.sleep(60)  # Sleep for 1 hour
 
+'''
 if __name__ == "__main__":
     main()
+'''

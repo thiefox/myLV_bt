@@ -13,9 +13,9 @@ import time
 import logging
 from datetime import datetime
 
-from utils import config
-from utils import utility
-from utils import log_adapter
+from com_utils import config
+from com_utils import utility
+from com_utils import log_adapter
 from enum import Enum
 from collections import deque
 import os

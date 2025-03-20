@@ -4,8 +4,8 @@ from datetime import datetime
 import logging
 import numpy as np
 
-from utils import utility
-from utils import log_adapter
+from com_utils import utility
+from com_utils import log_adapter
 
 from base_item import kline_interval, trade_symbol, MACD_CROSS, save_unit
 import base_item

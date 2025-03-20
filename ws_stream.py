@@ -9,8 +9,8 @@ import time
 import logging
 from datetime import datetime
 
-from utils import config
-from utils import utility
+from com_utils import config
+from com_utils import utility
 from enum import Enum
 from collections import deque
 import sys

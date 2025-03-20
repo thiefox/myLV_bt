@@ -13,8 +13,8 @@ from datetime import datetime, timedelta
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from utils import utility
-from utils import log_adapter
+from com_utils import utility
+from com_utils import log_adapter
 #import pandas
 from pandas import DataFrame
 import numpy as np

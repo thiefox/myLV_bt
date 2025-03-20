@@ -2,9 +2,12 @@ import os
 import hmac
 import hashlib
 from base64 import b64encode
-from Crypto.PublicKey import RSA, ECC
-from Crypto.Hash import SHA256
-from Crypto.Signature import pkcs1_15, eddsa
+from Cryptodome.PublicKey import RSA, ECC
+#from Crypto.PublicKey import RSA, ECC
+from Cryptodome.Hash import SHA256
+#from Crypto.Hash import SHA256
+from Cryptodome.Signature import pkcs1_15, eddsa
+#from Crypto.Signature import pkcs1_15, eddsa
 
 #hmac带密钥的哈希，消息接收者用密钥可以验证该消息是否被篡改
 def hmac_hashing(api_secret : str, payload : str) -> str:

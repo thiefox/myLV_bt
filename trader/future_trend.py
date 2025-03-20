@@ -6,8 +6,8 @@
 
 
 from binance import BinanceFutureHttp, OrderStatus, OrderType, OrderSide, Interval
-from utils import config
-from utils import utility, round_to, dingding_info
+from com_utils import config
+from com_utils import utility, round_to, dingding_info
 from enum import Enum
 import logging
 from datetime import datetime

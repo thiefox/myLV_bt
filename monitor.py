@@ -14,8 +14,8 @@ import json
 import time
 import logging
 
-from utils import config
-from utils import utility, round_to, dingding_info
+from com_utils import config
+from com_utils import utility, round_to, dingding_info
 from enum import Enum
 from collections import deque
 

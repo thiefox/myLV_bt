@@ -5,8 +5,8 @@
 """
 
 from binance import BinanceFutureHttp, OrderStatus, OrderType, OrderSide
-from utils import config
-from utils import utility, round_to
+from com_utils import config
+from com_utils import utility, round_to
 from enum import Enum
 import logging
 from datetime import datetime
