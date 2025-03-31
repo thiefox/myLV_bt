@@ -141,16 +141,18 @@ class active_monitor() :
         now = datetime.now()
         #if now.hour == 12 and now.day > self.last_notify.day :
         if now.hour != self.last_notify.hour :
-            logging.info('每日12点日报通知，当前时间={}。'.format(now.strftime('%Y-%m-%d %H:%M:%S')))
+            logging.info('定期报告，当前时间={}。'.format(now.strftime('%Y-%m-%d %H:%M:%S')))
             msg = '每日定点通知，当前时间={}。\n'.format(now.strftime('%Y-%m-%d %H:%M:%S'))
             mail = mail_template.mail_content('thiefox@qq.com')
             last_cross = self.processor.get_last_cross()
+            if last_cross is not None :
+                msg += '最后出现的交叉点时间={}，类型={}，状态={}。\n'.format(utility.timestamp_to_string(last_cross.timestamp),
+                    last_cross.cross.value, last_cross.status.value)
             last_handled = self.processor.get_last_handled_cross()
             price = self.bsw.get_price(self.symbol)
-            if last_handled[0] != base_item.MACD_CROSS.NONE :
-                msg += '最后处理的交叉点时间={}，类型={}。\n'.format(utility.timestamp_to_string(last_handled[1]), last_handled[0].value)
-            else :
-                msg += '最后的历史交叉点时间={}，类型={}。\n'.format(utility.timestamp_to_string(last_cross[1]), last_cross[0].value)
+            if last_handled is not None :
+                msg += '最后处理的交叉点时间={}，类型={}，状态={}。\n'.format(utility.timestamp_to_string(last_handled.timestamp),
+                    last_handled.cross.value, last_handled.status.value)
             msg += '当前{}价格={}$。\n'.format(self.symbol.value, price)
             logging.info('开始获取账户余额信息...')
             balances = self.bsw.get_all_balances()
@@ -173,8 +175,13 @@ class active_monitor() :
             btc_asset = round(btc_total * price, 2)
             total_asset = round(usdt_asset + btc_asset, 2)
             msg += '当前USDT剩余={}$，BTC数量={}，价值={}$，总资产={}$。\n'.format(usdt_asset, btc_total, btc_asset, total_asset)
+            crosses_info = self.processor.print_cross()
+            if len(crosses_info) > 0 :
+                msg += '---打印交叉点信息：\n'
+                for cross_info in crosses_info :
+                    msg += '------' + cross_info + '\n'
 
-            if mail.write_mail('定期通报', msg) :
+            if mail.write_mail('定期通报-{}$'.format(int(price)), msg) :
                 logging.info('每日12点日报通知发送成功。')
                 self.last_notify = now
         return
@@ -388,4 +395,4 @@ def monitor(OWNER : bool = False) -> bool :
     return True
 
 #目前采用的币安监控处理器
-#monitor(OWNER=True)
+monitor(OWNER=True)

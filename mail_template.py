@@ -144,7 +144,7 @@ class mail_content() :
                 title = '死叉卖出失败'
         elif self.__type == mail_type.BALANCE :
             content = BANANCE_NOTIFY.format(self.time_str, self.balance, self.total_count, self.price, self.asset)
-            title = '资产信息'
+            title = '币价-{}'.format(int(self.price))
         else :
             pass
         return title, content

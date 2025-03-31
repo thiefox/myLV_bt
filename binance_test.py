@@ -5,9 +5,9 @@ import os
 import sys
 import time
 import logging
-from binance import BinanceSpotHttp
-from binance import authentication
 import binance.binance_spot as bs
+from binance.binance_spot import BinanceSpotHttp
+from binance import authentication
 
 from com_utils import config
 #from utils import utility, round_to, dingding_info

@@ -79,6 +79,7 @@ class general:
 
         self.handled_cross = 0      #已处理的交叉点毫秒时间戳（K线开始时间）
         self.cross_type = ''        #交叉点类型，golden/death
+        self.cross_status = ''      #交叉点状态，buy/sell/faild
         return
     def path_trans(self) -> bool :
         if platform.system().upper() == 'LINUX':
@@ -268,16 +269,17 @@ class Config:
         else :
             return False
     #取得最后处理过的交叉点时间戳
-    def get_hc(self) -> tuple[int, str]:
-        return self.__general.handled_cross, self.__general.cross_type
+    def get_hc(self) -> tuple[int, str, str]:
+        return self.__general.handled_cross, self.__general.cross_type, self.__general.cross_status
     #更新最后处理过的交叉点时间戳
-    def update_hc(self, handled_cross : int, cross_type : str) -> bool:
+    def update_hc(self, handled_cross : int, cross_type : str, status = str) -> bool:
         assert(isinstance(handled_cross, int))
         assert(isinstance(cross_type, str))
         assert(handled_cross > 0)
         if self.__general.handled_cross != handled_cross:
             self.__general.handled_cross = handled_cross
             self.__general.cross_type = cross_type
+            self.__general.cross_status = status
             self.saves()
             return True
     #返回True表示更新成功，False表示不需要更新

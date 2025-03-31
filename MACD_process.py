@@ -17,6 +17,30 @@ import draw_profit
 import mail_template
 import binance_spot_wrap
 
+class CROSS_DESC():
+    def __init__(self, id : int, cross : base_item.MACD_CROSS, timestamp : int, 
+            status : base_item.TRADE_STATUS = base_item.TRADE_STATUS.IGNORE) -> None:
+        self.__id = id                  #交叉点的索引
+        self.__cross = cross            #交叉类型
+        self.__status = status          #交易状态
+        self.__timestamp = timestamp    #交叉点的时间戳
+        return
+    @property
+    def id(self) -> int:
+        return self.__id
+    @property
+    def cross(self) -> base_item.MACD_CROSS:
+        return self.__cross
+    @property
+    def status(self) -> base_item.TRADE_STATUS:
+        return self.__status
+    @property
+    def timestamp(self) -> int:
+        return self.__timestamp
+    def update_status(self, status : base_item.TRADE_STATUS):
+        self.__status = status
+        return
+
 class MACD_processor():
     SLOW_PERIOD = 26
     FAST_PERIOD = 12
@@ -35,10 +59,10 @@ class MACD_processor():
         self.dailies = pd.DataFrame(columns=['date', 'cash', 'hold', 'profit'])
         #交叉点列表，索引/交叉点/交易状态/时间戳
         #记录的是出现的交叉点，而不是处理的交叉点，后者是前者的子集
-        self.crosses = list[int, base_item.MACD_CROSS, base_item.TRADE_STATUS, int]()    
+        self.crosses = list[CROSS_DESC]()    
         hc_info = self.__config.get_hc()    
         if hc_info[0] > 0 :
-            logging.info('processor重新启动，最后处理交叉点时间={}，类型={}'.format(utility.timestamp_to_string(hc_info[0]), hc_info[1]))
+            logging.info('processor重新启动，最后处理交叉点时间={}，类型={}，状态={}'.format(utility.timestamp_to_string(hc_info[0]), hc_info[1], hc_info[2]))
         else :
             logging.info('processor第一次运行，没有最后处理交叉点。')
         #WINDOW_LENGTH=0表示不限制K线数量
@@ -63,24 +87,32 @@ class MACD_processor():
     def open_daily_log(self, LOG : bool):
         self.DAILY_LOG = LOG
         return
-    #取得最后一个处理过的交叉点
-    def get_last_handled_cross(self) -> tuple[base_item.MACD_CROSS, int]:
-        cross = base_item.MACD_CROSS.NONE
-        timeinfo = 0
+    #取得最后一个处理过的交叉点，从配置文件中读取
+    def get_last_handled_cross(self) -> CROSS_DESC:
         hc_info = self.__config.get_hc()
         if hc_info[0] > 0 :
             timeinfo = hc_info[0]
             cross = base_item.MACD_CROSS(hc_info[1])
-        return cross, timeinfo
-    def get_last_cross(self) -> tuple[base_item.MACD_CROSS, int]:
-        cross = base_item.MACD_CROSS.NONE
-        timeinfo = 0
+            if hc_info[2] == '' :
+                status = base_item.TRADE_STATUS.IGNORE
+            else :
+                status = base_item.TRADE_STATUS(hc_info[2])
+            return CROSS_DESC(-1, cross, timeinfo, status)
+        else :
+            return None
+    #取得最后一个交叉点
+    def get_last_cross(self) -> CROSS_DESC :
         if len(self.crosses) > 0 :
-            cross = self.crosses[-1][1]
-            assert(isinstance(cross, base_item.MACD_CROSS))
-            timeinfo = int(self.__klines.loc[self.crosses[-1][0], 'date_b'])
-            assert(isinstance(timeinfo, int))
-        return cross, timeinfo
+            return self.crosses[-1]
+        else :
+            return None
+    #更新交叉点状态
+    def update_cross_status(self, id : int, status : base_item.TRADE_STATUS):
+        for cross in self.crosses:
+            if cross.id == id :
+                assert(cross.status == base_item.TRADE_STATUS.IGNORE)
+                cross.update_status(status)
+                return
     #初始化历史K线数据
     #返回槽中的K线数量
     def init_history(self, klines : list) -> int:
@@ -179,7 +211,7 @@ class MACD_processor():
         index = self.__klines.index[index]
         assert(self.__config is not None)
         infos = None
-        logging.debug('klines总数={}, klines索引={}, 交叉={}'.format(self.len, self.__klines.index[index], cross))
+        logging.debug('klines总数={}, klines重置索引={}, 交叉={}'.format(self.len, index, cross))
         #print('内部索引={}, 外部索引={}, 交叉={}'.format(ni, index, cross))
         status = base_item.TRADE_STATUS.IGNORE
         #date_str = utility.timestamp_to_string(self.__klines[index, 'date_b'], ONLY_DATE=True)
@@ -211,7 +243,7 @@ class MACD_processor():
             pass
         return status, infos
 
-    def print_crossover(self, crossovers : list, closes : list, dates : list[str], asascend : bool = True):
+    def print_crossover(crossovers : list, closes : list, dates : list[str], asascend : bool = True):
         cur = 0
         his = 0
         gold_cnt = dead_cnt = 0
@@ -284,56 +316,75 @@ class MACD_processor():
         #计算MACD
         macd, signal, hist = pi.calculate_macd()
         crossovers = fin_util.find_macd_crossovers(macd, signal, hist, ONLY_LAST=not HISTORY)
+
+        '''
         if len(crossovers) > 0 :
-            self.print_crossover(crossovers, closes, dates_str, asascend=True)
+            MACD_processor.print_crossover(crossovers, closes, dates_str, asascend=True)
+        '''
 
         if len(crossovers) > 0 :
+            if len(crossovers) > 1 :
+                for cross in crossovers[:-1]:
+                    index : int = cross[0]
+                    cross : base_item.MACD_CROSS = cross[1]
+                    time_i = dates[index]
+                    cd = CROSS_DESC(index, cross, time_i)
+                    self.crosses.append((cd))
+                    
+
             index : int = crossovers[-1][0]
             cross : base_item.MACD_CROSS = crossovers[-1][1]
+            #timeinfo = int(self.__klines.loc[index, 'date_b'])
+            time_i = dates[index]
+            cd = CROSS_DESC(index, cross, time_i)
             if not HISTORY :
                 assert(len(crossovers) == 1)
                 assert(index == len(closes) - 1)
             if not cross.is_updown() :  #非0轴上下的交叉
                 oi = self.__klines.index[index]
                 if len(self.crosses) == 0 :
-                    self.crosses.append((oi, cross))
+                    self.crosses.append((cd))
                 else :
-                    last_oi = self.crosses[-1][0]
-                    last_cross = self.crosses[-1][1]
-                    if oi > last_oi :
-                        if cross.is_opposite(last_cross) :  #交叉点相反
-                            self.crosses.append((oi, cross))
+                    last_cd = self.crosses[-1]
+                    if cd.id > last_cd.id :
+                        if cross.is_opposite(last_cd.cross) :  #交叉点相反
+                            self.crosses.append((cd))
                         else :
-                            logging.error('交叉点=({},{})和最后一个交叉点=({},{})相同类型.'.format(oi, cross, last_oi, last_cross))
-                    elif oi == last_oi :
+                            logging.critical('交叉点=({},{})和最后一个交叉点=({},{})相同类型.'.format(cd.id, cd.cross, last_cd.id, last_cd.cross))
+                    elif cd.id == last_cd.id :
                         #同一个交叉点
                         pass
                     else :
-                        logging.error('交叉点=({},{})不是最新位置，最后一个有效交叉=({},{})'.format(oi, cross, last_oi, last_cross))
+                        logging.error('交叉点=({},{})不是最新位置，最后一个有效交叉=({},{})'.format(cd.id, cd.cross, last_cd.id, last_cd.cross))
+
                 if index == len(closes) - 1 and not HISTORY :        #最新的K线上有交叉
-                    time_i = dates[index]
-                    hc_info = self.__config.get_hc()
-                    if hc_info[0] == 0 or hc_info[0] < dates[index] :   #这个交叉点没有处理过
-                        logging.info('发现交叉点={}, 日期={}={}, 配置的最后处理交叉点={}={}...'.format(cross, 
-                            dates[index], dates_str[index], hc_info[0], utility.timestamp_to_string(hc_info[0])))
+                    lh_cross = self.get_last_handled_cross()
+                    if lh_cross is None or lh_cross.timestamp < dates[index] :   #这个交叉点没有处理过
+                        lh_time_str = utility.timestamp_to_string(lh_cross.timestamp) if lh_cross is not None else '无'
+                        logging.info('发现交叉点={}, 日期={}, 配置的最后处理交叉点={}...'.format(cross, 
+                            dates_str[index], lh_time_str))
                         status, infos = self.__process_cross(cross, index)
                         logging.info('出现新的MACD交叉点={}, 日期={}, 索引={}, 处理结果={}.'.format(cross, dates_str[index], index, status))
                         if status == base_item.TRADE_STATUS.BUY or status == base_item.TRADE_STATUS.SELL :
                             assert(infos is not None)
                             logging.info('交叉点={}完成买卖，code={}, 更新配置文件。'.format(cross, infos['local_code']))
-                            self.__config.update_hc(dates[index], cross.value)
+                            self.__config.update_hc(dates[index], cross.value, status.value)
+                            cd.update_status(status)
                         elif infos['local_code'] == -100 :
                             logging.info('交叉点={}因余额不足放弃买卖，更新配置文件。'.format(cross))
-                            self.__config.update_hc(dates[index], cross.value)
+                            self.__config.update_hc(dates[index], cross.value, status.value)
+                            cd.update_status(base_item.TRADE_STATUS.HANDLED)
                         else :
                             logging.warning('交叉点={}处理失败，交易状态={}, local_code={}, local_msg={}。'.format(cross,
                                 status.value, infos['local_code'], infos['local_msg']))
-                    elif hc_info[0] == dates[index] :
+                            cd.update_status(status)
+                    elif lh_cross.timestamp == dates[index] :
                         logging.info('K线交叉点={}已处理，索引={}, 时间={}。'.format(cross, index, dates_str[index]))
                         status = base_item.TRADE_STATUS.HANDLED
+                        cd.update_status(status)
                     else :
                         logging.error('交叉点={}，索引={}, 时间={}，小于最后处理时间={}.'.format(cross, index, dates_str[index],
-                            utility.timestamp_to_string(hc_info[0])))
+                            utility.timestamp_to_string(lh_cross.timestamp)))
                         assert(False)
                 else :
                     #assert(False)
@@ -342,34 +393,48 @@ class MACD_processor():
         #弹出多余的交叉点
         if MACD_processor.MAX_CROSS_COUNT > 0 and len(self.crosses) > MACD_processor.MAX_CROSS_COUNT :
                 self.crosses = self.crosses[-self.MAX_CROSS_COUNT:]
+                logging.info('交叉点数量超过{}，弹出多余的交叉点，剩余数量={}.'.format(MACD_processor.MAX_CROSS_COUNT, len(self.crosses)))
+
+        if len(self.crosses) > 0 :
+            msgs = self.print_cross(asascend=True)
+            for msg in msgs:
+                logging.info(msg)
 
         if self.DAILY_LOG :
             #如当天发现交叉，则cash和hold为处理交叉后的数据
             #prices = {base_item.trade_symbol.BTCUSDT: closes[-1], }
             profit = self.account.cash + self.account.get_amount(self.symbol) * closes[-1]
             self.dailies.loc[len(self.dailies)] = [dates[-1], self.account.cash, self.account.get_amount(self.symbol), profit]
-        #return cross, status, self.__config.get_hc()[0], infos
         return cross, status, time_i, infos
 
 
-    def print_cross(self):
+    def print_cross(self, asascend : bool = True) -> list[str]:
         #获取self.crosses中的金叉列表和死叉列表
-        gold_cross = dict()
-        dead_cross = dict()
-        for cross in self.crosses:
-            index = cross[0]
-            cross_type = cross[1]
-            if cross_type.is_golden():
-                gold_cross[index] = cross_type
-            elif cross_type.is_dead():
-                dead_cross[index] = cross_type
-        logging.info('所有金叉数量={}'.format(len(gold_cross)))
-        if len(gold_cross) > 0 :
-            logging.info('金叉点列表={}'.format(', '.join([str(x) for x in gold_cross.keys()])))
-        logging.info('所有死叉数量={}'.format(len(dead_cross)))
-        if len(dead_cross) > 0 :
-            logging.info('死叉点列表={}'.format(', '.join([str(x) for x in dead_cross.keys()])))
-        return
+        logs = list[str]()
+        all_gold = all_dead = 0
+        gold_updown = dead_updown = 0
+        for cd in self.crosses:
+            time_str = utility.timestamp_to_string(cd.timestamp, ONLY_DATE=True)
+            if cd.cross.is_golden():
+                all_gold += 1
+                if cd.cross.is_updown() :
+                    gold_updown += 1
+                    logs.append('金叉：发现跨0轴金叉（忽略），索引={}，时间={}，状态={}。'.format(cd.id, time_str, cd.status.value))
+                else :
+                    logs.append('金叉：发现金叉，索引={}，时间={}，状态={}。'.format(cd.id, time_str, cd.status.value))
+            elif cd.cross.is_dead():
+                all_dead += 1
+                if cd.cross.is_updown() :
+                    dead_updown += 1
+                    logs.append('死叉：发现跨0轴死叉（忽略），索引={}，时间={}，状态={}。'.format(cd.id, time_str, cd.status.value))
+                else :
+                    logs.append('死叉：发现死叉，索引={}，时间={}，状态={}。'.format(cd.id, time_str, cd.status.value))
+        if not asascend :
+            logs.reverse()
+        info = '交叉点总数={}，其中金叉总数={}, 0轴金叉（忽略）={}, 其中死叉总数={}, 0轴死叉（忽略）={}.'.format(
+            len(self.crosses), all_gold, gold_updown, all_dead, dead_updown)
+        logs.append(info)
+        return logs
     
 def calc_profit(year_begin : int, year_end : int, interval : base_item.kline_interval) -> list:
     INIT_CASH = 10000

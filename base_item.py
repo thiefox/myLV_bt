@@ -267,7 +267,7 @@ class TRADE_STATUS(str, Enum):
     BUY = 'BUY'
     SELL = 'SELL'
     FAILED = 'FAILED'          #交易失败
-    HANDLED = 'HANDLED'        #该条K线已处理过
+    HANDLED = 'HANDLED'        #该条K线已处理过，如因余额余币不足而不交易也归入此类
 
 class MACD_CROSS(str, Enum):
     NONE = ''       #之前为0，后面累加
