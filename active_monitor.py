@@ -26,13 +26,6 @@ DEFAULT_BACK_COUNT = 200
 
 GRACE_EXIT = False
 
-def exit_gracefully(signum, frame):
-    logging.info('active_monitor接收到退出信号={}'.format(signum))
-    global GRACE_EXIT
-    GRACE_EXIT = True
-    sys.exit(0)
-    return
-
 class active_monitor() :
     def __init__(self, su : base_item.save_unit) :
         self.__su = su
@@ -119,6 +112,7 @@ class active_monitor() :
         logging.info('离线初始化历史数据结果={}。'.format(info))
         return info >= self.processor.WINDOW_LENGTH
     def _finish(self) :
+        self.config.saves()
         return
     #是否需要退出
     def _need_exit(self) -> bool:
@@ -357,6 +351,19 @@ class active_monitor() :
         self._finish()
         return
 
+g_monitor : active_monitor = None
+
+def exit_gracefully(signum, frame):
+    logging.info('active_monitor接收到退出信号={}'.format(signum))
+    global GRACE_EXIT
+    GRACE_EXIT = True
+    global g_monitor
+    if g_monitor is not None :
+        g_monitor._finish()
+        g_monitor = None
+    sys.exit(0)
+    return
+
 def monitor(OWNER : bool = False) -> bool :
     if OWNER :
         print('Active Monitor Start, OWNER={}...'.format(OWNER))
@@ -372,19 +379,21 @@ def monitor(OWNER : bool = False) -> bool :
         logging.debug('Active Monitor Start, OWNER={}...'.format(OWNER))
 
     su = base_item.save_unit(base_item.kline_interval.d1)
-    monitor = active_monitor(su)
-    dns_valid = monitor.bsw.check_DNS()
+    global g_monitor
+    assert(g_monitor is None)
+    g_monitor = active_monitor(su)
+    dns_valid = g_monitor.bsw.check_DNS()
     if not dns_valid :
         logging.error('DNS解析失败，退出。')
         return False
     logging.info('DNS解析成功。')
-    server_time = monitor.bsw.get_server_time()
+    server_time = g_monitor.bsw.get_server_time()
     if server_time == 0 :
         logging.error('获取服务器时间失败，退出。')
         return False
     logging.info('获取服务器时间={}'.format(utility.timestamp_to_string(server_time)))
 
-    monitor.run()
+    g_monitor.run()
     #monitor.fake_run()
 
     if OWNER :

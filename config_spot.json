@@ -32,8 +32,8 @@
       "last_handled_cross": "2025-03-06 08:00:00"
     }
   ],
-  "grid_model" : {
-  	"holders": 0,
-  	"max": 1
+  "grid_model": {
+    "holders": 0,
+    "max": 1
   }
 }
