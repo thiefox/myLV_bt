@@ -10,6 +10,18 @@ import json
 
 import logging
 
+class grid_model:
+    def __init__(self):
+        self.holders = float(0)
+        self.max = float(0)
+        return
+    def _load(self, fields : dict):
+        for k, v in fields.items():
+            setattr(self, k, v)
+        return
+    def _save(self) -> dict:
+        return self.__dict__
+
 class macd_item:
     def __init__(self):
         self.symbol = ''
@@ -185,6 +197,7 @@ class Config:
         self.__general = general()
         self.macds = list[macd_item]()
         self.__security = security()
+        self.__grid_model = grid_model()
         return
     @property
     def general(self) -> general:
@@ -195,6 +208,9 @@ class Config:
     @property
     def private_key(self) -> str:
         return self.__security.private_key
+    @property
+    def grid_model(self) -> grid_model:
+        return self.__grid_model
 
     #载入配置文件
     def loads(self, file_name = '') -> bool:
@@ -237,6 +253,9 @@ class Config:
                 item = macd_item()
                 item._load(macd)
                 self.macds.append(item)
+        if 'grid_model' in configures:
+            self.__grid_model._load(configures['grid_model'])
+
         self.loaded = True
         return True
 
@@ -253,6 +272,7 @@ class Config:
         configures['macds'] = list()
         for macd in self.macds:
             configures['macds'].append(macd.__dict__)
+        configures['grid_model'] = self.__grid_model.__dict__
         with open(file_name, 'w') as f:
             json.dump(configures, f, indent=2)
         return
@@ -305,6 +325,12 @@ class Config:
             if macd.symbol == symbol and macd.interval == interval:
                 return macd
         return None
+    
+    def update_grid_holders(self, holders : float) -> bool:
+        if self.__grid_model.holders != holders:
+            self.__grid_model.holders = holders
+            self.saves()
+        return True
 
 #config实例
 #config = Config()

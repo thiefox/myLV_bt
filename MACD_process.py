@@ -321,6 +321,7 @@ class MACD_processor():
         if len(crossovers) > 0 :
             MACD_processor.print_crossover(crossovers, closes, dates_str, asascend=True)
         '''
+        logging.info('当前K线找到{}个MACD交叉点, self.crosses中已有数量={}。'.format(len(crossovers), len(self.crosses)))
 
         if len(crossovers) > 0 :
             if len(crossovers) > 1 :
@@ -334,8 +335,10 @@ class MACD_processor():
 
             index : int = crossovers[-1][0]
             cross : base_item.MACD_CROSS = crossovers[-1][1]
-            #timeinfo = int(self.__klines.loc[index, 'date_b'])
+            timeinfo = int(self.__klines.loc[index, 'date_b'])
             time_i = dates[index]
+            assert(timeinfo == time_i)
+            logging.info('当前K线找到最新交叉点，索引={}，时间={}，交叉类型={}。'.format(index, dates_str[index], cross))
             cd = CROSS_DESC(index, cross, time_i)
             if not HISTORY :
                 assert(len(crossovers) == 1)
@@ -344,18 +347,22 @@ class MACD_processor():
                 oi = self.__klines.index[index]
                 if len(self.crosses) == 0 :
                     self.crosses.append((cd))
+                    logging.debug('第一个交叉点，直接加入self.crosses。索引={}，时间={}，交叉类型={}。'.format(index, dates_str[index], cross))
                 else :
                     last_cd = self.crosses[-1]
                     if cd.id > last_cd.id :
                         if cross.is_opposite(last_cd.cross) :  #交叉点相反
                             self.crosses.append((cd))
+                            logging.info('self.crosses中的历史最后一个交叉点信息，索引={}，时间={}，交叉类型={}'.format(last_cd.id, 
+                                utility.timestamp_to_string(last_cd.timestamp), last_cd.cross))
                         else :
-                            logging.critical('交叉点=({},{})和最后一个交叉点=({},{})相同类型.'.format(cd.id, cd.cross, last_cd.id, last_cd.cross))
+                            logging.critical('当前交叉点=({},{})和最后一个交叉点=({},{})相同类型.'.format(cd.id, cd.cross, last_cd.id, last_cd.cross))
                     elif cd.id == last_cd.id :
                         #同一个交叉点
+                        logging.info('当前交叉点=({},{})和最后一个交叉点=({},{})相同.'.format(cd.id, cd.cross, last_cd.id, last_cd.cross))
                         pass
                     else :
-                        logging.error('交叉点=({},{})不是最新位置，最后一个有效交叉=({},{})'.format(cd.id, cd.cross, last_cd.id, last_cd.cross))
+                        logging.error('当前交叉点=({},{})不是最新位置，最后一个有效交叉=({},{})'.format(cd.id, cd.cross, last_cd.id, last_cd.cross))
 
                 if index == len(closes) - 1 and not HISTORY :        #最新的K线上有交叉
                     lh_cross = self.get_last_handled_cross()
@@ -390,6 +397,9 @@ class MACD_processor():
                     #assert(False)
                     cross = base_item.MACD_CROSS.NONE
                     pass
+            else :
+                logging.info('当前交叉点={}，索引={}，时间={}，该交叉点为0轴上下交叉，忽略处理。'.format(cross, index, dates_str[index]))
+
         #弹出多余的交叉点
         if MACD_processor.MAX_CROSS_COUNT > 0 and len(self.crosses) > MACD_processor.MAX_CROSS_COUNT :
                 self.crosses = self.crosses[-self.MAX_CROSS_COUNT:]
