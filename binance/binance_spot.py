@@ -565,7 +565,7 @@ class BinanceSpotHttp(object):
 
                 s_min = f"{min_quantity:f}".rstrip('0')
                 percision = len(str(s_min).split('.')[1])
-                logging.debug('最小数量小数位数={}'.format(percision))
+                logging.info('最小数量小数位数={}'.format(percision))
                 if amount < min_quantity:
                     logging.warning('{}已有数量={:f}({})小于最小卖出数量={:f}({})，交易取消。'.format(asset, remaining, remaining, min_quantity, min_quantity))
                     infos['local_code'] = -1
@@ -580,19 +580,21 @@ class BinanceSpotHttp(object):
             symbol = asset + 'USDT'
             quantity = round(amount, percision)
             order_id = self.gen_client_order_id()
-            logging.debug('生成本地订单id={}, 卖出数量={}'.format(order_id, quantity))
+            logging.info('生成本地订单id={}, 卖出数量={}'.format(order_id, quantity))
             infos = self.place_order(symbol, OrderSide.SELL, OrderType.MARKET, quantity, 0, order_id, time_inforce=timeInForce.GTC)
             if infos is None :
                 infos = dict()
                 infos['local_code'] = -1
                 infos['local_msg'] = '卖单返回空结果。'
+                logging.error('卖单返回空结果。')
             else :
                 infos['local_code'] = 0
                 infos['local_msg'] = '卖单完成。'
+                logging.info('卖单完成，infos={}'.format(infos))
         else :
             infos['local_code'] = -100
             infos['local_msg'] = '{}资产余额为0，本地取消卖单。'.format(asset)
-            logging.warning('{}资产余额为0'.format(asset))
+            logging.warning('{}资产余额为0，本地取消卖单。'.format(asset))
         return infos
     
     #amount=0表示满仓买入
@@ -608,7 +610,7 @@ class BinanceSpotHttp(object):
         #获取USDT余额
         balance = int(self.get_balance('USDT'))
         if balance > 0:
-            logging.debug('USDT余额={}'.format(balance))
+            logging.info('USDT余额={}'.format(balance))
             #对买入数量进行步进处理
             params = self.get_exchange_params(asset + 'USDT')
             if params is not None and 'min_quantity' in params :
@@ -633,12 +635,13 @@ class BinanceSpotHttp(object):
                 infos = dict()
                 infos['local_code'] = -1
                 infos['local_msg'] = '买单返回空结果。'
+                logging.error('买单返回空结果。')
             else :
                 infos['local_code'] = 0
                 infos['local_msg'] = '买单完成。'
-                logging.debug('买单完成，infos={}'.format(infos))
+                logging.info('买单完成，infos={}'.format(infos))
         else :
-            logging.warning('USDT资产余额为0，本地取消买单。')
             infos['local_code'] = -100
             infos['local_msg'] = 'USDT资产余额为0，本地取消买单。'
+            logging.warning('USDT资产余额为0，本地取消买单。')
         return infos

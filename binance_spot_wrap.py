@@ -109,8 +109,10 @@ class binance_spot_wrapper:
         assert(len(self.PRI_KEY) > 0)
         assert(isinstance(symbol, base_item.crypto_symbol))
         http_client = BS.BinanceSpotHttp(api_key=self.API_KEY, private_key=self.PRI_KEY)
+        logging.info('买入操作，币种={}，数量={}...'.format(symbol.value, amount))
         infos = http_client.buy_market(symbol.value, amount=amount)
         try:
+            logging.info('买入操作完成，返回infos={}'.format(infos))
             if infos['local_code'] == 0:
                 request_qty = float(infos['origQty'])
                 executed_qty = float(infos['executedQty'])

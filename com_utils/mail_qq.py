@@ -20,6 +20,7 @@ def send_email(receiver : str, title : str, content : str) -> bool:
     msg.attach(MIMEText(content, 'plain'))
 
     success = False
+    server = None
     try:
         # 连接到SMTP服务器
         server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT)
@@ -30,7 +31,13 @@ def send_email(receiver : str, title : str, content : str) -> bool:
         print('发送邮件失败，原因={}'.format(e))
         pass
     finally:
-        server.quit()
+        try :
+            if server:
+                # 关闭SMTP服务器连接
+                server.quit()
+        except Exception as e:
+            print('关闭SMTP服务器连接失败，原因={}'.format(e))
+            pass
     return success
 
 def test():

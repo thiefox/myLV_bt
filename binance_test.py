@@ -57,7 +57,7 @@ def get_account_balance():
             log_adapter.color_print('打印币种余额={}'.format(balance), log_adapter.COLOR.GREEN)
     mail = mail_template.mail_content('thiefox@qq.com')
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    mail.update_with_balance(now_str, balances, price)
+    mail.update_balance(now_str, balances, price)
     if not mail.send_mail() :
         log_adapter.color_print('异常：发送邮件失败', log_adapter.COLOR.RED)
     return
@@ -195,6 +195,8 @@ def test_buy(amount : float = 0) :
     keys = _get_keys()
     http_client = BinanceSpotHttp(api_key=keys[0], private_key=keys[1])
     info = http_client.buy_market('BTC', amount=amount)
+    print('打印买单结果...')
+    print(info)
     try:
         if info['local_code'] == 0:    
             request_qty = float(info['origQty'])
@@ -218,6 +220,8 @@ def test_sell(amount : float = 0) :
     keys = _get_keys()
     http_client = BinanceSpotHttp(api_key=keys[0], private_key=keys[1])
     info = http_client.sell_market('BTC', amount=amount)
+    print('打印卖单结果...')
+    print(info)
     try:
         if info['local_code'] == 0:
             request_qty = float(info['origQty'])
@@ -292,8 +296,8 @@ def test_time():
 #test_get_ticker()                  #获取最新价格详情
 #test_get_orders()                  #获取当前挂单
 #test_cancel_all_orders()           #取消所有挂单
-#test_buy(amount=0)                  #下单买入
-#test_sell(amount=0)                #下单卖出
+test_buy(amount=0)                  #下单买入
+#test_sell(amount=0.05)                #下单卖出
 
 #test_cancel_order('x-A6SIDXVS17307764878541000001')        #取消订单
 #test_klines()                       #获取K线数据

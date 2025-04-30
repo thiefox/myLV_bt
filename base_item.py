@@ -10,8 +10,43 @@ from datetime import datetime, timedelta
 from com_utils import utility
 from com_utils import config
 
+class kline_data() :
+    def __init__(self, data : list) -> None:
+        assert(isinstance(data, list) and len(data) >= 7)
+        self.__open = float(data[1])
+        self.__high = float(data[2])
+        self.__low = float(data[3])
+        self.__close = float(data[4])
+        self.__volume = round(float(data[5]), 2)
+        self.__open_time = int(data[0])
+        self.__close_time = int(data[6])
+        return
+    @property
+    def open(self) -> float:
+        return self.__open
+    @property
+    def high(self) -> float:
+        return self.__high
+    @property
+    def low(self) -> float:
+        return self.__low
+    @property
+    def close(self) -> float:
+        return self.__close
+    @property
+    def volume(self) -> float:
+        return self.__volume
+    @property
+    def open_time(self) -> int:
+        return self.__open_time
+    @property
+    def close_time(self) -> int:
+        return self.__close_time
+
+
 # K线周期枚举
 class kline_interval(str, Enum):
+    m1 = '1m'
     m3 = '3m'
     h1 = '1h'
     h4 = '4h'
@@ -32,18 +67,16 @@ class kline_interval(str, Enum):
     #获取周期数，秒为单位
     def get_interval_seconds(self) -> int:
         interval = 0
-        if self == kline_interval.m3:
-            interval = 60 * 3
-        elif self == kline_interval.h1:
-            interval = 3600 * 1
-        elif self == kline_interval.h4:
-            interval = 3600 * 4
-        elif self == kline_interval.h6:
-            interval = 3600 * 6
-        elif self == kline_interval.h12:
-            interval = 3600 * 12
-        elif self == kline_interval.d1:
-            interval = 3600 * 24
+        unit = self.get_unit()
+        value = self.get_value()
+        if unit == 'm':
+            interval = 60 * value
+        elif unit == 'h':
+            interval = 3600 * value
+        elif unit == 'd':
+            interval = 3600 * 24 * value
+        else :
+            assert(False)
         return interval
     #获取周期内时间差，即同周期的结束时间-开始时间
     def get_delta(self) -> timedelta:
@@ -64,7 +97,7 @@ class kline_interval(str, Enum):
         delta = self.get_delta()
         diff = other - begin
         return diff.total_seconds() <= delta.total_seconds()
-    #判断某条币安K线是否已封闭
+    #判断某条K线是否已封闭
     #begin: 开始时间戳，毫秒级
     #end: 结束时间戳，毫秒级
     #返回=0，未封闭。返回>0，封闭的秒数。返回<0，异常。
@@ -85,6 +118,7 @@ class kline_interval(str, Enum):
     #获取pos所在K线的开始时间戳
     #pos: 毫秒级时间戳
     def get_K_begin(self, pos : int = 0) -> int:
+        assert(isinstance(pos, int))
         GREENWICH_OFFSET_HOURS = 8
         begin = 0
         if pos == 0 :
@@ -109,11 +143,43 @@ class kline_interval(str, Enum):
             #print('build from UNIT d: pos_t={}, begin_t={}, begin={}'.format(pos_t, begin_t, begin))
         return begin
 
+    #计算K线偏移量的毫秒时间戳
+    #offset: 偏移的K线数量
+    #如begin=0则从当前时间开始计算
+    #返回毫秒时间戳
+    #如offset=1，BACK=TRUE，则取begin之前的一条K线（不包括begin所在的K线）
+    #如要取begin所在K线的开始时间，请用get_K_begin(begin)。或者用offset=0
+    def calc_offset(self, offset : int, begin : int = 0, BACK : bool = True) -> int:
+        offset_begin = 0
+        if begin <= 0 :
+            begin = int(datetime.now().timestamp()) * 1000
+        begin = self.get_K_begin(begin)     #取得begin所在K线的开始时间
+
+        if BACK :
+            offset_begin = begin - offset * self.get_interval_seconds() * 1000
+        else :
+            offset_begin = begin + offset * self.get_interval_seconds() * 1000
+        assert(offset_begin > 0)
+        return offset_begin
+    
+    #计算cur时间戳距离begin的interval步长
+    #begin: 毫秒级开始时间戳
+    #cur: 毫秒级当前时间戳，默认为0，表示当前时间
+    #返回步长，如=0则表示在begin K线内。如=1则表示在begin K线之后的第一条K线内
+    def calc_step(self, begin : int, cur : int = 0) -> int:
+        assert(begin > 0 and cur >= 0)
+        if cur == 0 :
+            cur = int(datetime.now().timestamp()) * 1000
+        step = (cur - begin) / (self.get_interval_seconds() * 1000)
+        return int(step)
+
 #保存单元
 class save_unit() : 
     def __init__(self, interval : kline_interval, multiple : int = 0) :
         self.__inter = interval
         self.__multi = multiple
+        self.__last_query_timestamp = 0             #上次查询时间戳，毫秒级
+        self.__query_interval = self.__inter.get_interval_seconds() * 1000      #默认查询间隔为K线周期
         return
     @property
     def interval(self) -> kline_interval:
@@ -121,6 +187,28 @@ class save_unit() :
     @property
     def multiple(self) -> int:
         return self.__multi
+    @property
+    def query_ts(self) -> int:
+        #上一次查询的时间戳，毫秒级
+        #如=0则表示未查询过数据
+        return self.__last_query_timestamp
+    @query_ts.setter
+    def query_ts(self, value : int) -> None:
+        assert(value >= 0)
+        self.__last_query_timestamp = value
+    @property
+    def query_interval(self) -> int:
+        return self.__query_interval
+    @query_interval.setter
+    def query_interval(self, value : int) -> None:
+        assert(value > 0)
+        self.__query_interval = value
+    def need_query(self, cur : int ) -> bool:
+        if self.query_ts == 0 :
+            return True
+        if cur - self.query_ts >= self.query_interval :
+            return True
+        return False
     #获取保存周期的满K线数量
     def get_K_count(self, dt : datetime = None) -> int:
         UNIT = self.interval.get_unit()
@@ -224,20 +312,6 @@ class save_unit() :
             else :
                 file = '{}-{:0>2}-{:0>2}-{}.json'.format(begin.year, begin.month, begin.day, self.interval.value)
         return file   
-    #计算K线偏移量
-    #count: K线数量
-    #如begin=0则从当前时间开始计算
-    #返回毫秒时间戳
-    def calc_offset(self, count : int, begin=0, BACK=True) -> int:
-        offset = 0
-        if begin <= 0 :
-            begin = int(datetime.now().timestamp()) * 1000
-        if BACK :
-            offset = begin - count * self.interval.get_interval_seconds() * 1000
-        else :
-            offset = begin + count * self.interval.get_interval_seconds() * 1000
-        assert(offset > 0)
-        return offset
 
 class crypto_symbol(str, Enum):
     BTC = 'BTC'
@@ -263,11 +337,20 @@ class trade_symbol(str, Enum):
             return crypto_symbol.UNKOWN
 
 class TRADE_STATUS(str, Enum):
+    NONE = 'NONE'
     IGNORE = 'IGNORE'
     BUY = 'BUY'
     SELL = 'SELL'
     FAILED = 'FAILED'          #交易失败
     HANDLED = 'HANDLED'        #该条K线已处理过，如因余额余币不足而不交易也归入此类
+    def success(self) -> bool:
+        return self == TRADE_STATUS.BUY or self == TRADE_STATUS.SELL
+    def failed(self) -> bool:
+        return self == TRADE_STATUS.FAILED
+    def ignored(self) -> bool:
+        return self == TRADE_STATUS.IGNORE
+    def handled(self) -> bool:
+        return self == TRADE_STATUS.HANDLED
 
 class MACD_CROSS(str, Enum):
     NONE = ''       #之前为0，后面累加
@@ -296,6 +379,8 @@ class MACD_CROSS(str, Enum):
             assert(self.is_dead())
             opposite = other.is_golden()
         return opposite
+    def valid(self) -> bool:
+        return self != MACD_CROSS.NONE and self != MACD_CROSS.TOP_DIVERGENCE and self != MACD_CROSS.BOTTOM_DIVERGENCE
   
 DEFAULT_FEE = 0.001         #默认手续费
 DEF_MIN_AMOUNT = 0.0001     #最小交易数量，如<1，则每次递减1位小数

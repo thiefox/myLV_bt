@@ -12,8 +12,11 @@ import logging
 
 class grid_model:
     def __init__(self):
-        self.holders = float(0)
-        self.max = float(0)
+        self.enable = 0
+        self.btc_holders = float(0)
+        self.btc_max = float(0)
+        self.volume = float(0)
+        self.usdt_max = float(0)
         return
     def _load(self, fields : dict):
         for k, v in fields.items():
@@ -24,6 +27,7 @@ class grid_model:
 
 class macd_item:
     def __init__(self):
+        self.enable = 0
         self.symbol = ''
         self.interval = ''
         self.last_handled_cross = ''
@@ -63,7 +67,6 @@ class general:
         # 订阅的交易K线列表，见配置文件
         self.streams = list()   #"btcusdt@kline_6h"/"btcusdt@bookTicker"
         #API key，如采用HMAC SHA256,则是服务端提供。如才有ED25519，则是LOCAL提供给服务端。
-        #self.api_key = "XYCWi1jlDJcOPG8MltM0plnPQlmqFd0wuvCKVuokovxlmwXBADoCI7Ea78h6bX2Y"
         self.api_key = ''
         #self.api_key_type = 'ED25519/HMAC'
         self.api_key_type = ''
@@ -327,8 +330,8 @@ class Config:
         return None
     
     def update_grid_holders(self, holders : float) -> bool:
-        if self.__grid_model.holders != holders:
-            self.__grid_model.holders = holders
+        if self.__grid_model.btc_holders != holders:
+            self.__grid_model.btc_holders = round(holders, 5)
             self.saves()
         return True
 
