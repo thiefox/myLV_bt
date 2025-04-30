@@ -71,7 +71,8 @@ class grid_process(processor_T):
             logging.error('网格交易策略初始化失败，无法获取当前持仓量和可用USDT。')
             return False
 
-        self.band = np.array([0.90, 0.92, 0.94, 0.96, 0.98, 1, 1.02, 1.04, 1.06, 1.08, 1.10]) * self.center
+        #self.band = np.array([0.90, 0.92, 0.94, 0.96, 0.98, 1, 1.02, 1.04, 1.06, 1.08, 1.10]) * self.center
+        self.band = np.array([0.95, 0.96, 0.97, 0.98, 0.99, 1, 1.01, 1.02, 1.03, 1.04, 1.05]) * self.center
         self.band = np.around(self.band, 2)
         return True
     def _enable_action(self) :
