@@ -47,14 +47,23 @@ def get_account_balance():
     price = test_get_ticker()
     keys = _get_keys()
     http_client = BinanceSpotHttp(api_key=keys[0], private_key=keys[1])
-   
+
     infos = http_client.get_account_info()
     balances = infos['balances']
     print('type of balances={}'.format(type(balances)))
+    BTC_balance = float(0)
+    USDT_balance = float(0)
     for balance in balances:
         if float(balance['free']) > 0 or float(balance['locked']) > 0:
             #print('type of balance={}'.format(type(balance)))
             log_adapter.color_print('打印币种余额={}'.format(balance), log_adapter.COLOR.GREEN)
+            if balance['asset'].upper() == 'BTC' :
+                BTC_balance = round(float(balance['free']) + float(balance['locked']), 5)
+            elif balance['asset'].upper() == 'USDT' :
+                USDT_balance = round(float(balance['free']) + float(balance['locked']), 2)
+    total_asset = round(USDT_balance + price * BTC_balance, 2)
+    log_adapter.color_print('BTC余额={:.5f}, USDT余额={:.2f}'.format(BTC_balance, USDT_balance), log_adapter.COLOR.GREEN)
+    log_adapter.color_print('当前价格={}，总资产={}'.format(price, total_asset), log_adapter.COLOR.GREEN)
     mail = mail_template.mail_content('thiefox@qq.com')
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     mail.update_balance(now_str, balances, price)
@@ -296,7 +305,7 @@ def test_time():
 #test_get_ticker()                  #获取最新价格详情
 #test_get_orders()                  #获取当前挂单
 #test_cancel_all_orders()           #取消所有挂单
-test_buy(amount=0)                  #下单买入
+#test_buy(amount=0)                  #下单买入
 #test_sell(amount=0.05)                #下单卖出
 
 #test_cancel_order('x-A6SIDXVS17307764878541000001')        #取消订单

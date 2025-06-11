@@ -173,6 +173,23 @@ class kline_interval(str, Enum):
         step = (cur - begin) / (self.get_interval_seconds() * 1000)
         return int(step)
 
+# K线锚点
+class kline_anchor() :
+    def __init__(self, inter : kline_interval, begin : int) -> None:
+        assert(begin > 0)
+        self.__inter = inter        #K线间隔
+        self.__begin = begin        #K线开始时间戳，毫秒级
+        return
+    @property
+    def begin(self) -> int:
+        return self.__begin
+    @property
+    def end(self) -> int:
+        return self.__begin + self.__inter.get_interval_seconds() * 1000 - 1
+    @property
+    def interval(self) -> kline_interval:
+        return self.__inter
+
 #保存单元
 class save_unit() : 
     def __init__(self, interval : kline_interval, multiple : int = 0) :

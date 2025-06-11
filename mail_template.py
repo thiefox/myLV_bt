@@ -37,7 +37,8 @@ class mail_content() :
         return self.__receiver
     @property       #交易数量
     def trade_count(self) -> float:
-        return round(self.__executed_quantity, 5)
+        #return round(self.__executed_quantity, 5)
+        return round(self.__executed_quantity, 3)
     @property       #当前币价或平均成交价格
     def price(self) -> float:
         return round(self.__price, 2)
@@ -49,7 +50,8 @@ class mail_content() :
         return round(self.__balance, 2)
     @property           #币的总数量
     def total_count(self) -> float:
-        return round(self.__total_quantity, 5)
+        #return round(self.__total_quantity, 5)
+        return round(self.__total_quantity, 3)
     @property            #总资产
     def asset(self) -> float:
         return round(self.balance + self.__total_quantity * self.price, 2)
@@ -98,7 +100,7 @@ class mail_content() :
                 logging.error('解析成交信息失败，错误信息={}。'.format(e))
                 logging.error('成交信息={}'.format(infos))
         return
-    def update_balance(self, time : str, balances : list, price : float) -> None:
+    def update_balance(self, time : str, balances : list[dict], price : float) -> None:
         assert(isinstance(balances, list))
         if self.__type == mail_type.UNKNOW :
             self.__type = mail_type.BALANCE

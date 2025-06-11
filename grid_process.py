@@ -35,6 +35,7 @@ class grid_process(processor_T):
         logging.info('初始化网格交易策略，BTC_MAX={}, USDT_MAX={}, VOLUME={}, 当前持仓={}...'.format(super().config.grid_model.btc_max, 
             super().config.grid_model.usdt_max, super().config.grid_model.volume, super().config.grid_model.btc_holders))
 
+        self.__holders = float(0.0)          # 当前持仓量，初始化为0   
         if not self.reset() :
             logging.error('网格交易策略初始化复位失败。')
             assert(False)
@@ -61,7 +62,8 @@ class grid_process(processor_T):
         # 每变动一格，增减的数量
         self.VOLUME = super().config.grid_model.volume  # 每次交易的数量
         self.MAX_HOLDER = super().config.grid_model.btc_max          # 最大持仓量，超过平仓
-        self.__holders = float(0.0)          # 当前持仓量，初始化为0
+        #self.__holders不能初始化为0，不然会影响交易策略，触发空仓买入
+        #self.__holders = float(0.0)          # 当前持仓量，初始化为0   
         #self.__holders = round(super().config.grid_model.btc_holders, 5)          # 通过grid模块买入的总持仓量，需要写入配置文件
         self.USDT_MAX = int(super().config.grid_model.usdt_max)        # 最大可用的USDT数量
         if self.VOLUME <= 0 or self.MAX_HOLDER <= 0 or self.VOLUME > self.MAX_HOLDER:
@@ -149,7 +151,8 @@ class grid_process(processor_T):
             if UPDATE :
                 old_grid = self.last_grid
                 self.last_grid = pd.cut([self.last_price], self.band, labels=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10])[0]
-                logging.info('中枢价格更新后调整last_grid，old_pos={}，new_pos={}。'.format(old_grid, self.last_grid))
+                logging.info('中枢价格更新后调整网格，last_price={}，last_grid，old_pos={}，new_pos={}。'.format(self.last_price,
+                    old_grid, self.last_grid))
             else :
                 assert(self.last_grid == 0)
             return 1         

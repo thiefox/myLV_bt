@@ -137,6 +137,14 @@ class active_monitor() :
                 datetime.strftime(now, '%Y-%m-%d %H-%M-%S')))
             return True
         return False
+    
+    def update_mail_asset(self, mail : mail_template.mail_content) -> None:
+        price = self.bsw.get_price(self.symbol.get_base())
+        balances = self.bsw.get_all_balances()
+        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        mail.update_balance(now_str, balances, price)
+        return
+
     def _daily_notify(self) :
         now = datetime.now()
         infos = list[str]()
@@ -243,10 +251,11 @@ class active_monitor() :
                         mail = mail_template.mail_content('thiefox@qq.com')
                         mail.processor = processor.name
                         mail.update_trade(s_bt, ukr.trade, infos)
+                        self.update_mail_asset(mail)
                         if not mail.send_mail() :
                             logging.critical('处理器{}在K线={}发生了交易动作，发送邮件失败。'.format(processor.name, s_bt))
                     elif ukr.trade.handled() :
-                        logging.info('处理器{}在（{}）K线={}已发生过交易动作，忽略。'.format(processor.name, inter.value, s_bt))
+                        logging.info('处理器{}在（{}）K线={}已发生过交易动作1，忽略。'.format(processor.name, inter.value, s_bt))
                     else :
                         logging.debug('该K线不构成交易，开始时间={}，结束价格={}'.format(s_bt, end_price))
                         pass
@@ -388,7 +397,7 @@ class active_monitor() :
                                 processor.su.interval.value, utility.timestamp_to_string(begin_time),
                                 ukr.trade.status, ukr.trade.reason, ukr.trade.info))
                         elif ukr.trade.handled() :
-                            logging.info('处理器{}在（{}）K线={}已发生过交易动作，忽略。'.format(processor.name, processor.su.interval.value,
+                            logging.info('处理器{}在（{}）K线={}已发生过交易动作2，忽略。'.format(processor.name, processor.su.interval.value,
                                 utility.timestamp_to_string(begin_time)))
                         elif ukr.trade.ignored() :
                             logging.info('处理器{}在（{}）K线={}忽略该K线，开始时间={}，结束时间={}'.format(processor.name, processor.su.interval.value,

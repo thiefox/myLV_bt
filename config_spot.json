@@ -21,9 +21,9 @@
     "proxy_port": 0,
     "dingding_token": "",
     "dingding_prompt": "",
-    "handled_cross": 1744329600000,
-    "cross_type": "GOLD_ZERO_DOWN",
-    "cross_status": "BUY"
+    "handled_cross": 1747612800000,
+    "cross_type": "DEAD_ZERO_UP",
+    "cross_status": "FAILED"
   },
   "macds": [
     {

@@ -164,9 +164,12 @@ class MACD_processor(processor_T):
         if cd is not None :
             self._update_cross_desc(cd)
             if not cd.status.success() :
-                logging.critical('异常：最后处理的交叉点={}，状态={}，初始化失败。'.format(utility.timestamp_to_string(cd.timestamp), cd.status.value))
-                self._controled = False
-                return processor_T.PREPARE_FAILED
+                logging.critical('异常：最后处理的交叉点={}，类型={}，状态={}，初始化失败。'.format(utility.timestamp_to_string(cd.timestamp), 
+                    cd.cross.value, cd.status.value)) 
+                #self._controled = False
+                #return processor_T.PREPARE_FAILED
+                self._controled = True
+                return processor_T.PREPARE_CONTROLED
             assert(cd.status.success())
             self._controled = True
             return processor_T.PREPARE_CONTROLED
@@ -335,7 +338,8 @@ class MACD_processor(processor_T):
                     utr.end_trade(base_item.TRADE_STATUS.FAILED, '卖出失败，原因：'.format(UPDATE_TRADE_RESULT.INSUFFICIENT_CURRENCY))
                     logging.info('卖出失败，原因：余币不足。')
                 else :
-                    utr.end_trade(base_item.TRADE_STATUS.FAILED, '卖出失败，local_code={}'.format(infos['local_code']))
+                    utr.end_trade(base_item.TRADE_STATUS.FAILED, '卖出失败，local_code={}, local_msg={}。'.format(infos['local_code'],
+                        infos['local_msg']))
         else :
             pass
         return utr, infos
@@ -365,7 +369,7 @@ class MACD_processor(processor_T):
         now = int(datetime.now().timestamp()) * 1000
         #last_2_fixed = False
         #检测当前时间是否已过格林威治时间的23:59:59
-        logging.info('当前时间={}，倒数第二条K线的开始时间={}。最后的K线开始时间={}。'.format(utility.timestamp_to_string(now),
+        logging.info('当前时间={}，K线总数={}。倒数第二条K线的开始时间={}。最后的K线开始时间={}。'.format(utility.timestamp_to_string(now), super().K_len,
             utility.timestamp_to_string(LAST_2_BEGIN), utility.timestamp_to_string(last_begin)))
         #if now  >= LAST_2_BEGIN + ONE_DAY_MILLSECONDS and now < LAST_2_BEGIN + ONE_DAY_MILLSECONDS * 2 :
         if now  >= LAST_2_BEGIN + ONE_DAY_MILLSECONDS :
@@ -389,8 +393,8 @@ class MACD_processor(processor_T):
             return utr, infos
 
         #选取self._klines中的从头部到尾部第二条K线的收盘价，最后一条K线是活跃K线，不能参与计算
-        closes = self._klines.loc[0:len(self._klines)-2, 'close'].tolist()
-        dates = self._klines.loc[0:len(self._klines)-2, 'date_b'].tolist()
+        closes = self._klines.loc[0:len(self._klines)-1, 'close'].tolist()      #-2改成-1，下同
+        dates = self._klines.loc[0:len(self._klines)-1, 'date_b'].tolist()
         logging.info('process_ex处理，HISTORY={}，当前K线数量={}，收盘价列表长度={}。'.format(HISTORY, super().K_len, len(closes)))
 
         dates = [int(i) for i in dates]
@@ -421,12 +425,7 @@ class MACD_processor(processor_T):
 
             index : int = crossovers[-1][0]
             cross : base_item.MACD_CROSS = crossovers[-1][1]
-            timeinfo = int(self._klines.loc[index, 'date_b'])
             time_i = dates[index]
-            if timeinfo != time_i :
-                logging.error('时间戳不一致，K线时间={}({})，交叉点时间={}({})。'.format(utility.timestamp_to_string(timeinfo), timeinfo, 
-                    utility.timestamp_to_string(time_i), time_i))
-            assert(timeinfo == time_i)
             logging.critical('找到的最后一个交叉点信息：索引={}，时间={}，交叉类型={}。'.format(index, dates_str[index], cross))
             cd = CROSS_DESC(index, cross, time_i)
             if not HISTORY :
@@ -460,7 +459,7 @@ class MACD_processor(processor_T):
                             dates_str[index], lh_time_str))
                         if not self._reach_max_fail(cd) :
                             utr, infos = self.__process_cross(cross, index)
-                            logging.info('出现新的MACD交叉点={}, 日期={}, 索引={}, 处理结果={}.'.format(cross, dates_str[index], index, status))
+                            logging.info('出现新的MACD交叉点={}, 日期={}, 索引={}, 处理结果={}.'.format(cross, dates_str[index], index, utr.status))
                             if utr.status.success() :
                                 assert(infos is not None)
                                 logging.info('交叉点={}完成买卖，code={}, 更新配置文件。'.format(cross, infos['local_code']))

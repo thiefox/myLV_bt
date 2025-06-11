@@ -24,6 +24,7 @@ class UPDATE_TRADE_RESULT(object):
         self.__trade_reason = ''        #触发交易的原因
         #self.__local_code = 0         # 0：交易成功。-100：余额/余币不足导致交易失败。-1：交易失败，具体原因参见local_msg。
         self.__trade_info = ''                # 如本地异常或取消交易，则记录失败原因。在trade_status为FAILED的前提下。
+        self.__kline = None         # 触发交易的K线锚点
         return
     def __str__(self) -> str:
         return "status={}, reason={}, info={}".format(self.status, self.reason, self.info)
@@ -36,6 +37,17 @@ class UPDATE_TRADE_RESULT(object):
     @property
     def info(self) -> str:
         return self.__trade_info
+    @status.setter
+    def info(self, ti : str) -> None:
+        self.__trade_info = ti
+        return
+    @property
+    def anchor(self) -> base_item.kline_anchor:
+        return self.__kline
+    def set_anchor(self, interval : base_item.kline_interval, begin : int) -> None:
+        self.__kline = base_item.kline_anchor(interval, begin)
+        return
+
     def success(self) -> bool:
         return self.status.success()
     def failed(self) -> bool:
@@ -490,7 +502,7 @@ class processor_T(object):
             return self._prepare_online()
         else :
             return self._prepare_offline(END)
-
+        
 def test():
     logger = logging.getLogger()
     
