@@ -63,7 +63,7 @@ def get_account_balance():
                 USDT_balance = round(float(balance['free']) + float(balance['locked']), 2)
     total_asset = round(USDT_balance + price * BTC_balance, 2)
     log_adapter.color_print('BTC余额={:.5f}, USDT余额={:.2f}'.format(BTC_balance, USDT_balance), log_adapter.COLOR.GREEN)
-    log_adapter.color_print('当前价格={}，总资产={}'.format(price, total_asset), log_adapter.COLOR.GREEN)
+    log_adapter.color_print('当前价格={}$，总资产={}$.'.format(price, total_asset), log_adapter.COLOR.GREEN)
     mail = mail_template.mail_content('thiefox@qq.com')
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     mail.update_balance(now_str, balances, price)
